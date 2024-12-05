@@ -12,7 +12,7 @@ parser.add_argument("--seed", type=int, default=2)  # random seed
 parser.add_argument("--model", type=str, default='TD3_Distill')  # caac  ddpg maddpg
 parser.add_argument("--data", type=str, default='A_0_1')  # used data prefix
 parser.add_argument("--para_flag", type=str, default='A_0_1')  # stored parameter prefix
-parser.add_argument("--episode", type=int, default=400)  # training episode
+parser.add_argument("--episode", type=int, default=200)  # training episode
 parser.add_argument("--overtake", type=int, default=0)  # overtake=0: not allow overtaking
 parser.add_argument("--arr_hold", type=int, default=1)  # arr_hold=1: determine holding once bus arriving bus stop
 parser.add_argument("--train", type=int, default=1)  # train=1: training phase

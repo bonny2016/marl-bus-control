@@ -182,7 +182,7 @@ class Critic(nn.Module):
         combine initial state (n x 9) with augmented state (l x 14), to generate augmented state (n x 13).
 
         parameters:
-        s:  initial state n x 9:   [n_bus_idx, n_stop_idx, the_bus_location, time_to_next_stop, occp, min(fh / 600., 2.), min(bh / 600., 2.), is_target, bus_id]
+        s:  initial state n x 9:   [n_bus_idx, n_stop_idx, the_bus_location, time_to_next_stop, occp, h-, h+, is_target, bus_id]
         fp: augmented state l x 14: above 9 + [a, stop_interval, bus_interval, time_interval, bus.id]
 
         returns [bus_idx , bus_location,  occp, h-, h+, bus_location_2, occp_2, h2-, h2+, a, stop_interval, bus_interval, active_flag]
