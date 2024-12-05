@@ -1,5 +1,6 @@
 #saved models
-saves/
+model/save/
+*.pth
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -131,3 +132,5 @@ dmypy.json
 .pyre/
 
 .idea
+
+
