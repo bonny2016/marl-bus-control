@@ -142,7 +142,7 @@ class Critic(nn.Module):
 
             u_x = merged_s[(merged_s[:, 2] < 0) & (merged_s[:, -1] == 1)][:, :-1]  # active upstream
             d_x = merged_s[(merged_s[:, 2] > 0) & (merged_s[:, -1] == 1)][:, :-1]  # active downstream
-            o_x = merged_s[merged_s[:, -1] == 0][1:, :8]  # inactive buses
+            o_x = merged_s[merged_s[:, -1] == 0][1:, :8]  # inactive buses, exclude subject bus
             if u_x.size(0) > 0:
                 u_x_target = self.aug_attention(ego_x, u_x)
             else:
@@ -253,10 +253,10 @@ class Critic(nn.Module):
 
     def forward(self, xs):
         x, a, fp = xs
-        Q1 = self.ego_critic(x, fp, a)
+        # Q1 = self.ego_critic(x, fp, a)
         A1, A2, reg = self.event_critic(x, fp, a)
-        G1, G2 = Q1 + A1, Q1 + A2
-        return Q1, A2, G1.view(-1, 1), G2.view(-1, 1), reg
+        G1, G2 = A1, A2
+        return A1, A2, G1.view(-1, 1), G2.view(-1, 1), reg
 
 
 class Agent():

@@ -9,7 +9,7 @@ import torch
 
 parser = argparse.ArgumentParser(description='param')
 parser.add_argument("--seed", type=int, default=2)  # random seed
-parser.add_argument("--model", type=str, default='TD3_Distill')  # caac  ddpg maddpg
+parser.add_argument("--model", type=str, default='TD3_Distill_2')  # caac  ddpg maddpg
 parser.add_argument("--data", type=str, default='A_0_1')  # used data prefix
 parser.add_argument("--para_flag", type=str, default='A_0_1')  # stored parameter prefix
 parser.add_argument("--episode", type=int, default=200)  # training episode
@@ -33,6 +33,8 @@ if args.model == 'CAAC':
     from model.CAAC import Agent
 if args.model == 'TD3_Distill':
     from model.TD3_Distill import Agent
+if args.model == 'TD3_Distill_2':
+    from model.TD3_Distill_event_only import Agent
 if args.model == 'ddpg':
     from model.DDPG import Agent
 if args.model == 'maddpg':

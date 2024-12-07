@@ -384,9 +384,7 @@ class Engine():
             time_interval = 0.
             ego_state = self.GM.temp_memory[bus.id]['s'][-1][0, :]
             fp = []
-            fp.append(
-                list(ego_state) + [self.GM.temp_memory[bus.id]['a'][0][0], stop_interval, bus_interval, time_interval,
-                                   bus.id])
+            fp.append(list(ego_state) + [self.GM.temp_memory[bus.id]['a'][0][0]])
             temp = bus.last_vist_interval
             subject_bus_idx = self.dispatch_times[bus.route_id].index(bus.dispatch_time)
             subject_bus_stop = bus.stop_list.index(bus.pass_stop[-2])
@@ -399,14 +397,15 @@ class Engine():
                             continue
 
                         if (bus_id_ == bus.forward_bus or bus_id_ == bus.backward_bus) or (self.all == 1):
-                            bus_idx = self.dispatch_times[bus.route_id].index(self.bus_list[bus_id_].dispatch_time)
-                            bus_interval = [(bus_idx - subject_bus_idx) / len(self.bus_list)]
-                            stop_interval = [
-                                (bus.stop_list.index(bus_stop_id_) - subject_bus_stop) / len(self.busstop_list)]
-                            time_interval = [(temp - current_interval) / 180.0]
-                            fp.append(
-                                self.bus_list[bus_id_].his[temp] + stop_interval + bus_interval + time_interval + [
-                                    bus_id_])
+                            # bus_idx = self.dispatch_times[bus.route_id].index(self.bus_list[bus_id_].dispatch_time)
+                            # bus_interval = [(bus_idx - subject_bus_idx) / len(self.bus_list)]
+                            # stop_interval = [
+                            #     (bus.stop_list.index(bus_stop_id_) - subject_bus_stop) / len(self.busstop_list)]
+                            # time_interval = [(temp - current_interval) / 180.0]
+                            # fp.append(
+                            #     self.bus_list[bus_id_].his[temp] + stop_interval + bus_interval + time_interval + [
+                            #         bus_id_])
+                            fp.append(self.bus_list[bus_id_].his[temp])
                 temp += 1
 
             reward1 = (-var / mean / mean) * (1 - self.weight) * 5
@@ -498,23 +497,23 @@ class Engine():
                     if the_bus_location == 0:
                         print("here")
                     time_to_next_stop = 0
-                    n_bus_idx = 0
+                    n_bus_idx = target_bus_idx
                     n_stop_idx = target_stop_idx
                 else:
                     is_target = 0
                     the_bus_location = bus_.loc[-1] / self.total_route_length
                     time_to_next_stop = self.dist_to_next_stop(bus_)
-                    n_bus_idx = self.dispatch_times[bus_.route_id].index(bus_.dispatch_time) - target_bus_idx
+                    n_bus_idx = self.dispatch_times[bus_.route_id].index(bus_.dispatch_time)
                     try:
                         n_stop_idx = (bus.stop_list.index(bus_.pass_stop[-1])) / len(self.busstop_list) if len(
                             bus_.pass_stop) > 0 else 0
                     except Exception as e:
                         print(e)
-                one_bus = [n_bus_idx, n_stop_idx, the_bus_location, time_to_next_stop, occp, min(fh / 600., 2.),
-                           min(bh / 600., 2.), is_target, bus_id]
+                one_bus = [bus_id, n_bus_idx, n_stop_idx, the_bus_location, occp, min(fh / 600., 2.),
+                           min(bh / 600., 2.), is_target]
                 snapshot.append(one_bus)
         snapshot = np.array(snapshot)
-        snapshot_sorted = snapshot[snapshot[:, -2].argsort()[::-1]]
+        snapshot_sorted = snapshot[snapshot[:, -1].argsort()[::-1]]
         return snapshot_sorted
 
     def distill(self, student):

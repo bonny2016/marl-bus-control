@@ -1,5 +1,4 @@
 #saved models
-model/save/
 *.pth
 
 # Byte-compiled / optimized / DLL files

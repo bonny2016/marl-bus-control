@@ -28,10 +28,10 @@ class Actor(nn.Module):
         super(Actor, self).__init__()
         self.att_dim = 400
         self.max_action = 3.0
-        self.att_up = CrossAttentionLayer(6, 6, self.att_dim)
-        self.att_down = CrossAttentionLayer(6, 6, self.att_dim)
+        self.att_up = CrossAttentionLayer(4, 4, self.att_dim)
+        self.att_down = CrossAttentionLayer(4, 4, self.att_dim)
 
-        self.proj = nn.Linear(6, self.att_dim)
+        self.proj = nn.Linear(4, self.att_dim)
         self.linear2 = nn.Linear(self.att_dim, self.att_dim)
         self.linear3 = nn.Linear(self.att_dim, self.att_dim)
         self.linear4 = nn.Linear(self.att_dim, 1)
@@ -40,35 +40,29 @@ class Actor(nn.Module):
         self.tanh = nn.Tanh()
 
     def forward(self, s_list):
-        # s:  initial state n x 8:   [[bus_id, n_bus_idx, n_stop_idx, the_bus_location, occp, h-, h+, is_target] for all n buses at time t]
-        x_u, x_d, x_subjects = [], [], []
-
+        x_u, x_d, x_targets = [], [], []
         for s in s_list:
-            subject_bus_idx, subject_stop_idx, subject_location = s[0,1], s[0,2], s[0,3]
-            s[:, 1] = s[:, 1] - subject_bus_idx
-            s[:, 2] = s[:, 2] - subject_stop_idx
-            s[:, 3] = s[:, 3] - subject_location
-            x_subject = s[0:1, 1:-1]
-            x_prev = s[s[:, 3] < 0][:, 1:-1]
-            x_next = s[s[:, 3] > 0][:, 1:-1]
+            x_target = s[0:1, [0, 4, 5, 6]]
+            x_prev = s[s[:, 0] < 0][:, [0, 4, 5, 6]]
+            x_next = s[s[:, 0] > 0][:, [0, 4, 5, 6]]
 
             if x_prev.size(0) > 0:
-                x_prev = self.att_up(x_subject, x_prev)
+                x_prev = self.att_up(x_target, x_prev)
             else:
                 x_prev = torch.zeros(1, self.att_dim)
 
             if x_next.size(0) > 0:
-                x_next = self.att_down(x_subject, x_next)
+                x_next = self.att_down(x_target, x_next)
             else:
                 x_next = torch.zeros(1, self.att_dim)
             x_d.append(x_prev.squeeze())
             x_u.append(x_next.squeeze())
-            x_subjects.append(x_subject.squeeze())
+            x_targets.append(x_target.squeeze())
         x_d = torch.stack(x_d, 0)
         x_u = torch.stack(x_u, 0)
-        x_subjects = torch.stack(x_subjects, 0)
+        x_targets = torch.stack(x_targets, 0)
 
-        x_proj = self.proj(x_subjects)
+        x_proj = self.proj(x_targets)
         x = x_d + x_u
         x = self.relu(self.linear2(x))
         x = x + x_proj
@@ -104,9 +98,9 @@ class Critic(nn.Module):
         self.fc3_o_ = nn.Linear(self.v_dim * self.n_heads, 200)
         self.fc4_o_ = nn.Linear(200, 1)
 
-        self.aug_attention = CrossAttentionLayer(8, 16, self.v_dim, dropout=False, alpha=0.2, concat=True)
+        self.aug_attention = CrossAttentionLayer(4, 12, self.v_dim, dropout=False, alpha=0.2, concat=True)
 
-        self.o_attention = CrossAttentionLayer(8, 8, self.v_dim, dropout=False, alpha=0.2, concat=True)
+        self.o_attention = CrossAttentionLayer(4, 5, self.v_dim, dropout=False, alpha=0.2, concat=True)
 
         self.relu = nn.ReLU()
         self.elu = nn.ELU()
@@ -125,24 +119,15 @@ class Critic(nn.Module):
         o_x_targets = []
         for x, fp, a in zip(x_list, fp_list, a_list):
             s = torch.tensor(x, dtype=torch.float32)
-            # merged_s: [[n_bus_idx, n_stop_idx, the_bus_location, occp, h-, h+, is_target, a1 |
-            #          n_bus_idx_2, n_stop_idx_2, the_bus_location_2, occp_2, h_2-, h_2+, is_target, a2, active_flag] for all n buses from s]
-            merged_s = self.merge(s, a, fp)
-            subject_bus_idx, subject_stop_idx, subject_location = merged_s[0, 0], merged_s[0, 1], merged_s[0, 2]
-            merged_s[:, 0] = merged_s[:, 0] - subject_bus_idx
-            merged_s[:, 8] = merged_s[:, 8] - subject_bus_idx
-
-            merged_s[:, 1] = merged_s[:, 1] - subject_stop_idx
-            merged_s[:, 9] = merged_s[:, 9] - subject_stop_idx
-
-            merged_s[:, 2] = merged_s[:, 2] - subject_location
-            merged_s[:, 10] = merged_s[:, 10] - subject_location
-            ego_x = merged_s[0:1, :8]
-            # ego_x = torch.cat((ego_x, a.view(1, -1)), dim=1)
-
-            u_x = merged_s[(merged_s[:, 2] < 0) & (merged_s[:, -1] == 1)][:, :-1]  # active upstream
-            d_x = merged_s[(merged_s[:, 2] > 0) & (merged_s[:, -1] == 1)][:, :-1]  # active downstream
-            o_x = merged_s[merged_s[:, -1] == 0][1:, :8]  # inactive buses
+            # merged_s: [bus_idx, bus_location, occp, h-, h+, bus_location_2, occp_2, h2-, h2+, a, stop_interval, bus_interval, active_flag]
+            merged_s = self.merge(s, fp)
+            merged_s[:, 6] = merged_s[:, 6] - merged_s[:, 2]
+            merged_s[:, 5] = merged_s[:, 5] - merged_s[:, 1]
+            ego_x = s[0:1, [4, 5, 6]]
+            ego_x = torch.cat((ego_x, a.view(1, -1)), dim=1)
+            u_x = merged_s[(merged_s[:, -2] < 0) & (merged_s[:, -1] == 1)][:, :-1]  # active upstream
+            d_x = merged_s[(merged_s[:, -2] > 0) & (merged_s[:, -1] == 1)][:, :-1]  # active downstream
+            o_x = merged_s[merged_s[:, -1] == 0][:, :5]  # inactive buses
             if u_x.size(0) > 0:
                 u_x_target = self.aug_attention(ego_x, u_x)
             else:
@@ -192,53 +177,43 @@ class Critic(nn.Module):
             reg = torch.zeros(1)
         return G1, G2, reg
 
-    def merge(self, s, a, fp):
+    def merge(self, s, fp):
         '''
-        combine initial state (n x 8), action (scaler), and augmented state (l x 9), to generate augmented state (n x 17), by matching bus_ids
-        [[n_bus_idx, n_stop_idx, the_bus_location, occp, h-, h+, is_target, a1 |
-         n_bus_idx_2, n_stop_idx_2, the_bus_location_2, occp_2, h_2-, h_2+, is_target, a2, active_flat] for all n buses from s]
+        combine initial state (n x 9) with augmented state (l x 14), to generate augmented state (n x 13).
+
         parameters:
-        s:  initial state n x 8:   [[bus_id, n_bus_idx, n_stop_idx, the_bus_location, occp, h-, h+, is_target] for all n buses at time t]
-        fp: augmented state l x 16: [[bus_id, n_bus_idx, n_stop_idx, the_bus_location, occp, h-, h+, is_target, action] for l active agents during action period of subject bus]
+        s:  initial state n x 9:   [n_bus_idx, n_stop_idx, the_bus_location, time_to_next_stop, occp, h-, h+, is_target, bus_id]
+        fp: augmented state l x 14: above 9 + [a, stop_interval, bus_interval, time_interval, bus.id]
 
-        returns [bus_idx , bus_location,  occp, h-, h+, bus_location_2, occp_2, h2-, h2+, a2, stop_interval, bus_interval, active_flag]
+        returns [bus_idx , bus_location,  occp, h-, h+, bus_location_2, occp_2, h2-, h2+, a, stop_interval, bus_interval, active_flag]
         '''
-        init_bus_ids = s[:, 0]
-        aug_bus_ids = fp[:, 0]
-
-        n_bus = s.shape[0]
-        a_column = np.zeros((n_bus, 1))
-        a_column[0, 0] = a # Set the first value to action
-        # Append the column to the original matrix
-        init_state = np.hstack((s[:,1:], a_column))
-        init_state = torch.from_numpy(init_state).float()
-        aug_states = fp
-        aug_states[:, -2] = 0
-
+        init_state = s[:, [0, 2, 4, 5, 6, -1]]
+        window_state = fp[:, [2, 4, 5, 6, 9, 10, 11, -1]]
+        bus_id_init = init_state[:, -1]
         result = []
-        for row in aug_states:
-            bus_id_right = row[0]
-            matching_rows = init_bus_ids == bus_id_right
+        for row in window_state:
+            bus_id = row[-1]
+            matching_rows = bus_id_init == bus_id
             if torch.sum(matching_rows) > 0:
-                s_init = init_state[matching_rows][0:1, :]  # Get the first matching row in aug_states
-                s_aug = row[1:]
+                s_init = init_state[matching_rows][:,
+                         :-1]  # Get the first matching row in b (you can adjust if multiple matches)
+                s_window = row[:-1]
                 flag = torch.ones(1, 1)
-                state = torch.cat((s_init, s_aug.view(1, -1), flag), dim=1)
+                state = torch.cat((s_init, s_window.view(1, -1), flag), dim=1)
                 result.append(state.squeeze())
         result = torch.stack(result, 0)
 
-        # a_ids = init_state[:, -1]
-        # b_ids = fp[:, -1]
+        a_ids = init_state[:, -1]
+        b_ids = fp[:, -1]
         # init_state may contain outstanding buses not in window_state, fill in with blank values
-        mask = ~init_bus_ids.unsqueeze(1).eq(aug_bus_ids).any(dim=1)
+        mask = ~a_ids.unsqueeze(1).eq(b_ids).any(dim=1)
         outstanding_init = init_state[mask]
-        empty_placeholder = torch.full((outstanding_init.shape[0], aug_states.shape[1]), 0, dtype=torch.float)
-        outstanding_init = torch.cat((outstanding_init, empty_placeholder), dim=1)
+        empty_placeholder = torch.full((outstanding_init.shape[0], window_state.shape[1]), 0, dtype=torch.float)
+        outstanding_init = torch.cat((outstanding_init[:, :-1], empty_placeholder), dim=1)
         result = torch.cat((result, outstanding_init), dim=0)
         return result
 
     def ego_critic(self, x_list, fp_list, a_list):
-        # x_list:  [[bus_id, n_bus_idx, n_stop_idx, the_bus_location, occp, h-, h+, is_target] for all n buses at time t]
         x_u, x_d, x_targets = [], [], []
         for s, a in zip(x_list, a_list):
             s = torch.tensor(s, dtype=torch.float32)
@@ -359,7 +334,7 @@ class Agent():
             batch_s.append(s)
             _fp_ = np.array(copy.deepcopy(fp))
             _fp_ = torch.tensor(_fp_, dtype=torch.float32)
-            # _fp_[0, self.state_dim] = self.actor([torch.tensor(s, dtype=torch.float32)])[0].detach()
+            _fp_[0, self.state_dim] = self.actor([torch.tensor(s, dtype=torch.float32)])[0].detach()
             batch_fp_critic_t.append(_fp_)
             batch_actor_a.append(self.actor([torch.tensor(s, dtype=torch.float32)])[0])
             batch_fp.append(torch.FloatTensor(fp))
