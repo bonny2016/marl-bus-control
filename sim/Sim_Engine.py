@@ -502,7 +502,6 @@ class Engine():
                 else:
                     is_target = 0
                     the_bus_location = bus_.loc[-1] / self.total_route_length
-                    time_to_next_stop = self.dist_to_next_stop(bus_)
                     n_bus_idx = self.dispatch_times[bus_.route_id].index(bus_.dispatch_time)
                     try:
                         n_stop_idx = (bus.stop_list.index(bus_.pass_stop[-1])) / len(self.busstop_list) if len(
@@ -524,7 +523,6 @@ class Engine():
                     bus_id = r.bus_list[i]
                     if len(self.GM.memory[bus_id]) > 0:
                         memory.extend(self.GM.memory[bus_id])
-                avg_loss = student.distill_from_others(memory)
         return student
 
     def learn(self):
