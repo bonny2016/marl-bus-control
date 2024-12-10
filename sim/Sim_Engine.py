@@ -218,8 +218,7 @@ class Engine():
             pax_leave_stop = []
             waitinglist = sorted(self.busstop_list[stop.id].waiting_list)[:]
             for num in waitinglist:
-                if bus != None and self.pax_list[
-                    num].route == bus.route_id:
+                if bus != None and self.pax_list[num].route == bus.route_id:
                     self.pax_list[num].miss += 1
                 if bus != None and bus.capacity - len(bus.onboard_list) > 0 and self.pax_list[
                     num].route == bus.route_id:
@@ -496,7 +495,6 @@ class Engine():
                     the_bus_location = bus_location / self.total_route_length
                     if the_bus_location == 0:
                         print("here")
-                    time_to_next_stop = 0
                     n_bus_idx = target_bus_idx
                     n_stop_idx = target_stop_idx
                 else:

@@ -45,12 +45,13 @@ class Actor(nn.Module):
 
         for s in s_list:
             subject_bus_idx, subject_stop_idx, subject_location = s[0,1], s[0,2], s[0,3]
+            subject_location = s[0, 3]
             s[:, 1] = s[:, 1] - subject_bus_idx
-            s[:, 2] = s[:, 2] - subject_stop_idx
-            s[:, 3] = s[:, 3] - subject_location
+            # s[:, 2] = s[:, 2] - subject_stop_idx
+            # s[:, 3] = s[:, 3] - subject_location
             x_subject = s[0:1, 1:-1]
-            x_prev = s[s[:, 3] < 0][:, 1:-1]
-            x_next = s[s[:, 3] > 0][:, 1:-1]
+            x_prev = s[s[:, 3] < subject_location][:, 1:-1]
+            x_next = s[s[:, 3] > subject_location][:, 1:-1]
 
             if x_prev.size(0) > 0:
                 x_prev = self.att_up(x_subject, x_prev)
@@ -69,10 +70,9 @@ class Actor(nn.Module):
         x_subjects = torch.stack(x_subjects, 0)
 
         x_proj = self.proj(x_subjects)
-        x = x_d + x_u
+        x = x_d + x_u + x_proj
         x = self.relu(self.linear2(x))
-        x = x + x_proj
-        x = self.relu(self.linear3(x))
+        x = self.linear3(x)
         x = (self.tanh(self.linear4(x)) + 1) * 1.5
         return x
 
@@ -104,9 +104,9 @@ class Critic(nn.Module):
         self.fc3_o_ = nn.Linear(self.v_dim * self.n_heads, 200)
         self.fc4_o_ = nn.Linear(200, 1)
 
-        self.aug_attention = CrossAttentionLayer(8, 16, self.v_dim, dropout=False, alpha=0.2, concat=True)
+        self.aug_attention = CrossAttentionLayer(8, 16, self.v_dim)
 
-        self.o_attention = CrossAttentionLayer(8, 8, self.v_dim, dropout=False, alpha=0.2, concat=True)
+        self.o_attention = CrossAttentionLayer(8, 8, self.v_dim)
 
         self.relu = nn.ReLU()
         self.elu = nn.ELU()
@@ -132,16 +132,16 @@ class Critic(nn.Module):
             merged_s[:, 0] = merged_s[:, 0] - subject_bus_idx
             merged_s[:, 8] = merged_s[:, 8] - subject_bus_idx
 
-            merged_s[:, 1] = merged_s[:, 1] - subject_stop_idx
-            merged_s[:, 9] = merged_s[:, 9] - subject_stop_idx
-
-            merged_s[:, 2] = merged_s[:, 2] - subject_location
-            merged_s[:, 10] = merged_s[:, 10] - subject_location
+            # merged_s[:, 1] = merged_s[:, 1] - subject_stop_idx
+            # merged_s[:, 9] = merged_s[:, 9] - subject_stop_idx
+            #
+            # merged_s[:, 2] = merged_s[:, 2] - subject_location
+            # merged_s[:, 10] = merged_s[:, 10] - subject_location
             ego_x = merged_s[0:1, :8]
             # ego_x = torch.cat((ego_x, a.view(1, -1)), dim=1)
 
-            u_x = merged_s[(merged_s[:, 2] < 0) & (merged_s[:, -1] == 1)][:, :-1]  # active upstream
-            d_x = merged_s[(merged_s[:, 2] > 0) & (merged_s[:, -1] == 1)][:, :-1]  # active downstream
+            u_x = merged_s[(merged_s[:, 2] < subject_location) & (merged_s[:, -1] == 1)][:, :-1]  # active upstream
+            d_x = merged_s[(merged_s[:, 2] > subject_location) & (merged_s[:, -1] == 1)][:, :-1]  # active downstream
             o_x = merged_s[merged_s[:, -1] == 0][1:, :8]  # inactive buses
             if u_x.size(0) > 0:
                 u_x_target = self.aug_attention(ego_x, u_x)
