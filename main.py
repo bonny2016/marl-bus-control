@@ -33,6 +33,8 @@ if args.model == 'CAAC':
     from model.CAAC import Agent
 if args.model == 'TD3_Distill':
     from model.TD3_Distill import Agent
+if args.model == 'TD3_Distill_2':
+    from model.TD3_Distill_2 import Agent
 if args.model == 'ddpg':
     from model.DDPG import Agent
 if args.model == 'maddpg':
