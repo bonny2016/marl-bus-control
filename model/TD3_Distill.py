@@ -207,11 +207,8 @@ class Critic(nn.Module):
         aug_states = torch.cat((fp[:, : -2], fp[:, -1:]), dim=1) #get rid of is_target column
 
         result = []
-        matched_bus_ids = []
         for row in aug_states:
             bus_id_active = row[0]
-            if bus_id_active in matched_bus_ids:
-                continue
             matching_rows = init_bus_ids == bus_id_active
             if torch.sum(matching_rows) > 0:
                 s_init = init_state[matching_rows][0:1, :]  # Get the first matching row in aug_states
@@ -219,7 +216,6 @@ class Critic(nn.Module):
                 flag = torch.ones(1, 1)
                 state = torch.cat((s_init, s_aug.view(1, -1), flag), dim=1)
                 result.append(state.squeeze())
-            matched_bus_ids.append(bus_id_active)
         result = torch.stack(result, 0)
 
         mask = ~init_bus_ids.unsqueeze(1).eq(aug_bus_ids).any(dim=1)
