@@ -174,7 +174,7 @@ class Critic(nn.Module):
 
     def forward(self, xs):
         x_list, a_list, fp_list = xs
-        u_x_targets, d_x_targets, o_x_targets, ego_targets = [], [], [], []
+        reg, u_x_targets, d_x_targets, o_x_targets, ego_targets = [], [], [], [], []
 
         for x, fp, a in zip(x_list, fp_list, a_list):
             s = torch.tensor(x, dtype=torch.float32)
@@ -219,7 +219,12 @@ class Critic(nn.Module):
 
         # Aggregate outputs
         G1, G2 = Q1 + u_x_1 + d_x_1 + o_x_1, Q1 + u_x_2 + d_x_2 + o_x_2
-        return G1.view(-1, 1), G2.view(-1, 1)
+        # G1, G2 = u_x_1 + d_x_1 + o_x_1, u_x_2 + d_x_2 + o_x_2
+        if len(reg) > 0:
+            reg = torch.stack(reg, 0).view(-1, 1)
+        else:
+            reg = torch.zeros(1)
+        return G1, G2, G1.view(-1, 1), G2.view(-1, 1), reg
 
 
 class Agent():
@@ -340,27 +345,27 @@ class Agent():
         b_r = torch.tensor(np.array(batch_r), dtype=torch.float).view(-1, 1)
 
         def critic_learn():
-            Q1, Q2 = self.critic([batch_s, b_a, b_fp_pad])
+            Q, A1, G1, G2, reg = self.critic([batch_s, b_a, b_fp_pad])
             batch_ns_tensor = [torch.tensor(state, dtype=torch.float) for state in batch_ns]
             nb_a = self.actor_target(batch_ns_tensor).detach().view(-1, 1)
             noise = (torch.randn_like(nb_a) * self.policy_noise).clamp(0, self.noise_clip)
             nb_a = (nb_a + noise).clamp(0, 3.0)
             # nb_a = (nb_a + noise)
-            Q1_, Q2_ = self.critic_target(
+            Q_, A1_, G1_, G2_, _ = self.critic_target(
                 [batch_ns, nb_a, b_nfp_pad])
-            Q_ = torch.min(Q1_, Q2_)
-            q_target = b_r + self.gamma * (Q_.detach()).view(-1, 1)
+            G_ = torch.min(G1_, G2_)
+            q_target = b_r + self.gamma * (G_.detach()).view(-1, 1)
 
             loss_fn = nn.MSELoss()
-            qloss = loss_fn(Q1, q_target) + loss_fn(Q2, q_target)
+            qloss = loss_fn(G1, q_target) + loss_fn(G2, q_target) + 0.1 * reg.mean()
             self.critic_optim.zero_grad()
             qloss.backward()
             self.critic_optim.step()
             return qloss.item()
 
         def actor_learn():
-            Q1, Q2 = self.critic([batch_s, batch_actor_a.view(-1, 1), batch_fp_critic_t])
-            policy_loss = -torch.mean(Q1)
+            policy_loss, _, _, _, _ = self.critic([batch_s, batch_actor_a.view(-1, 1), batch_fp_critic_t])
+            policy_loss = -torch.mean(policy_loss)
             self.actor_optim.zero_grad()
             policy_loss.backward()
             self.actor_optim.step()
