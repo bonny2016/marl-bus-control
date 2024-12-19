@@ -15,13 +15,13 @@ parser.add_argument("--para_flag", type=str, default='A_0_1')  # stored paramete
 parser.add_argument("--episode", type=int, default=200)  # training episode
 parser.add_argument("--overtake", type=int, default=0)  # overtake=0: not allow overtaking
 parser.add_argument("--arr_hold", type=int, default=1)  # arr_hold=1: determine holding once bus arriving bus stop
-parser.add_argument("--train", type=int, default=1)  # train=1: training phase
-parser.add_argument("--restore", type=int, default=0)  # restore=1: restore the model
-parser.add_argument("--share_scale", type=int, default=0)  # restore=1: restore the model
-parser.add_argument("--n_students", type=int, default=4)  # restore=1: restore the model
+parser.add_argument("--train", type=int, default=0)  # train=1: training phase
+parser.add_argument("--restore", type=int, default=1)  # restore=1: restore the model
+parser.add_argument("--share_scale", type=int, default=0)  # share
+parser.add_argument("--n_students", type=int, default=4)  # n_students=4: number of learning agents
 parser.add_argument("--all", type=int,
                     default=1)  # all=0 for considering only forward/backward buses; all=1 for all buses
-parser.add_argument("--vis", type=int, default=0)  # vis=1 to visualize bus trajectory in test phase
+parser.add_argument("--vis", type=int, default=1)  # vis=1 to visualize bus trajectory in test phase
 parser.add_argument("--weight", type=int, default=2)  # weight for action penalty
 parser.add_argument("--control", type=int,
                     default=2)  # 0 for no control;  1 for FH; 2 for RL (ddpg, maddpg)
@@ -84,8 +84,7 @@ def train(args):
         if args.share_scale == 1:
             agents = {}
             for k, v in eng.route_list.items():
-                agent = Agent(state_dim=state_dim, name='', n_stops=len(bus_stop_list), buslist=bus_list,
-                              seed=args.seed)
+                agent = Agent(state_dim=state_dim, name='', seed=args.seed)
                 agents[k] = agent
     for ep in range(args.episode):
         stop_list_ = copy.deepcopy(stop_list)
@@ -145,7 +144,7 @@ def train(args):
 
         avg_reward = U.train_result_track(eng=eng, ep=ep, qloss_log=qloss_log, ploss_log=ploss_log, log=log, name=name,
                                           seed=args.seed)
-        # if avg_reward > -1.5 and avg_reward > best_reard and ep > 10:
+
         if avg_reward > -1 and ep > 10 and ep % 2 == 0:
             agent_to_save = agents_pool[np.random.randint(0, 4)]
 
@@ -186,22 +185,16 @@ def evaluate(args):
         # non share
         if args.share_scale == 0:
             for k, v in eng.bus_list.items():
-                state_dim = 3
-                agent = Agent(state_dim=state_dim, name=k, n_stops=len(eng.busstop_list), buslist=eng.bus_list,
-                              seed=args.seed)
+                state_dim = 7
+                agent = Agent(state_dim=state_dim, name='', seed=args.seed)
                 agents[k] = agent
 
         # share in route
         if args.share_scale == 1:
             agents = {}
             for k, v in eng.route_list.items():
-                state_dim = 3
-                if args.model == 'accf':
-                    agent = Agent(state_dim=state_dim, name='', n_stops=len(eng.busstop_list), buslist=eng.bus_list,
-                                  seed=args.seed)
-                else:
-                    agent = Agent(state_dim=state_dim, name='', n_stops=len(eng.busstop_list), buslist=eng.bus_list,
-                                  seed=args.seed)
+                state_dim = 7
+                agent = Agent(state_dim=state_dim, name='', seed=args.seed)
                 agents[k] = agent
 
     rs = [np.random.randint(10, 20) / 10. for _ in range(100)]
@@ -254,7 +247,7 @@ def evaluate(args):
         U.train_result_track(eng=eng, ep=ep, qloss_log=[0], ploss_log=[0], log=log, name=name,
                              seed=args.seed)
 
-        if args.vis == 1 and args.data == 'SG0':
+        if args.vis == 1:
             if args.control == 0:
                 name = abspath + "/vis/visnc/"
             if args.control == 1:
