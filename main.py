@@ -12,16 +12,16 @@ parser.add_argument("--seed", type=int, default=1)  # random seed
 parser.add_argument("--model", type=str, default='TD3_Distill')  # caac  ddpg maddpg
 parser.add_argument("--data", type=str, default='A_0_1')  # used data prefix
 parser.add_argument("--para_flag", type=str, default='A_0_1')  # stored parameter prefix
-parser.add_argument("--episode", type=int, default=200)  # training episode
+parser.add_argument("--episode", type=int, default=100)  # training episode
 parser.add_argument("--overtake", type=int, default=0)  # overtake=0: not allow overtaking
 parser.add_argument("--arr_hold", type=int, default=1)  # arr_hold=1: determine holding once bus arriving bus stop
-parser.add_argument("--train", type=int, default=0)  # train=1: training phase
-parser.add_argument("--restore", type=int, default=1)  # restore=1: restore the model
-parser.add_argument("--share_scale", type=int, default=0)  # share
+parser.add_argument("--train", type=int, default=1)  # train=1: training phase
+parser.add_argument("--restore", type=int, default=0)  # restore=1: restore the model
+parser.add_argument("--share_scale", type=int, default=0)
 parser.add_argument("--n_students", type=int, default=4)  # n_students=4: number of learning agents
 parser.add_argument("--all", type=int,
                     default=1)  # all=0 for considering only forward/backward buses; all=1 for all buses
-parser.add_argument("--vis", type=int, default=1)  # vis=1 to visualize bus trajectory in test phase
+parser.add_argument("--vis", type=int, default=0)  # vis=1 to visualize bus trajectory in test phase
 parser.add_argument("--weight", type=int, default=2)  # weight for action penalty
 parser.add_argument("--control", type=int,
                     default=2)  # 0 for no control;  1 for FH; 2 for RL (ddpg, maddpg)
@@ -29,16 +29,10 @@ parser.add_argument("--control", type=int,
 args = parser.parse_args()
 print(args)
 
-if args.model == 'CAAC':
-    from model.CAAC import Agent
 if args.model == 'TD3_Distill':
     from model.TD3_Distill import Agent
-if args.model == 'TD3_Distill_2':
-    from model.TD3_Distill_2 import Agent
-if args.model == 'ddpg':
-    from model.DDPG import Agent
-if args.model == 'maddpg':
-    from model.MADDPG import Agent
+if args.model == 'TD3_Distill_ActiveOnly':
+    from model.TD3_Distill_ActiveOnly import Agent
 
 
 def load_student(state_dim):
@@ -75,9 +69,10 @@ def train(args):
         bus_list = eng.bus_list
         bus_stop_list = eng.busstop_list
         state_dim = 7
-        agents_pool = [Agent(state_dim=state_dim, name='', seed=args.seed) for i in range(args.n_students)]
+
         # non share
         if args.share_scale == 0:
+            agents_pool = [Agent(state_dim=state_dim, name='', seed=args.seed) for i in range(args.n_students)]
             for i, (k, v) in enumerate(eng.bus_list.items()):
                 agents[k] = agents_pool[i % args.n_students]
         # share in route
@@ -141,28 +136,35 @@ def train(args):
         name += str(int(args.weight))
         if args.all == 1:
             name += 'all'
-
+        if args.share_scale == 1:
+            name += 'shared_model'
         avg_reward = U.train_result_track(eng=eng, ep=ep, qloss_log=qloss_log, ploss_log=ploss_log, log=log, name=name,
                                           seed=args.seed)
+        if args.share_scale == 1 or args.n_students == 1:
+            if ep % 5 == 0 and ep > 10 and args.restore == 0:
+                # store model
+                for k, v in agents.items():
+                    v.save(str(args.para_flag) + str('_') + str(args.share_scale) + str('_') + str(args.weight) + str(
+                        '_') + str(args.model) + str('_'))
+        else:
+            if avg_reward > -1 and ep > 10 and ep % 5 == 0:
+                agent_to_save = agents_pool[np.random.randint(0, 4)]
 
-        if avg_reward > -1 and ep > 10 and ep % 2 == 0:
-            agent_to_save = agents_pool[np.random.randint(0, 4)]
-
-            agent_to_save.save(
-                str(args.para_flag) + str('_') + str(args.share_scale) + str('_') + str(args.weight) + str(
-                    '_') + str(args.model) + str('_'))
-
-            student_agent = load_student(state_dim=state_dim)
-            student_agent = eng.distill(student_agent)
-            student_agent.save(
-                str(args.para_flag) + str('_') + str(args.share_scale) + str('_') + str(args.weight) + str(
-                    '_') + str(args.model) + str('_'))
-            # for k, v in eng.bus_list.items():
-            for agent in agents_pool:
-                agent.lr_decay()
-                agent.load(
+                agent_to_save.save(
                     str(args.para_flag) + str('_') + str(args.share_scale) + str('_') + str(args.weight) + str(
                         '_') + str(args.model) + str('_'))
+
+                student_agent = load_student(state_dim=state_dim)
+                student_agent = eng.distill(student_agent)
+                student_agent.save(
+                    str(args.para_flag) + str('_') + str(args.share_scale) + str('_') + str(args.weight) + str(
+                        '_') + str(args.model) + str('_'))
+                # for k, v in eng.bus_list.items():
+                for agent in agents_pool:
+                    agent.lr_decay()
+                    agent.load(
+                        str(args.para_flag) + str('_') + str(args.share_scale) + str('_') + str(args.weight) + str(
+                            '_') + str(args.model) + str('_'))
         eng.close()
 
 
