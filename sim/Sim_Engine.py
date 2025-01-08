@@ -369,8 +369,9 @@ class Engine():
                 break
         var, mean = self.route_info(bus)
 
-        action = np.array(self.agents[bus.id].choose_action(state))
-
+        agent = self.agents[bus.route_id] if self.share_scale else self.agents[bus.id]
+        # action = np.array(self.agents[bus.id].choose_action(state))
+        action = np.array(agent.choose_action(state))
         ego_state = np.atleast_1d(state[0, :])
         action = np.atleast_1d(action.squeeze())
         mark = list(np.concatenate([ego_state, action]))
@@ -513,7 +514,8 @@ class Engine():
         snapshot_sorted = snapshot[snapshot[:, -1].argsort()[::-1]]
         return snapshot_sorted
 
-    def distill(self, student):
+
+    def distill(self, student, teachers):
         if self.share_scale == 0:
             for rid, r in self.route_list.items():
                 memory = deque(maxlen=2000)
@@ -521,7 +523,9 @@ class Engine():
                     bus_id = r.bus_list[i]
                     if len(self.GM.memory[bus_id]) > 0:
                         memory.extend(self.GM.memory[bus_id])
-        return student
+                teacher_variance = student.actor_output_variance(memory, teachers)
+                student.distill_from_others(memory)
+        return teacher_variance, student
 
     def learn(self):
         ploss_set = []
@@ -530,6 +534,7 @@ class Engine():
         if self.share_scale == 0:
             for bus_id, bus in self.bus_list.items():
                 if (len(self.GM.memory[bus_id]) + 1) > 16:
+                    # print("learning with memory of bus id:", bus_id)
                     ploss, qloss = self.agents[bus.id].learn(self.GM.memory[bus_id])
                     try:
                         self.qloss[bus.id].append(np.mean(qloss))

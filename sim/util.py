@@ -269,6 +269,8 @@ def train_result_track(eng, ep, qloss_log, ploss_log, log, name='', seed=0):
         train_log['travel'] = [np.mean(travel_cost)]
         train_log['delay'] = [np.mean(delay)]
         train_log['AOD'] = AOD
+        train_log['distilled'] = [log['distilled']]
+        train_log['teacher_variance'] = [log['teacher_variance']]
         #
         # for k, v in headways_mean.items():
         #     train_log['headway_mean' + str(k)] = [np.mean(v)]
@@ -290,9 +292,9 @@ def train_result_track(eng, ep, qloss_log, ploss_log, log, name='', seed=0):
         res['sto'] = log['sto']
         res['sth'] = log['sth']
         print(
-            'Episode: %g | reward: %g | reward_var: %g | reward1: %g | reward2: %g | ploss: %g | qloss: %g |wait '
+            'Episode: %g | reward: %g | reward_var: %g | reward1: %g | reward2: %g | distilled | teacher_variance | ploss: %g | qloss: %g |wait '
             'cost: %g | travel cost: %g | max hold :%g| min hold :%g| avg hold :%g | var hold :%g' % (
-                ep - 1, np.mean(reward_bus_wise), np.var(rs), np.mean(reward_bus_wisep1), np.mean(reward_bus_wisep2),
+                ep, np.mean(reward_bus_wise), np.var(rs), np.mean(reward_bus_wisep1), np.mean(reward_bus_wisep2),
                 np.mean(ploss_log), np.mean(qloss_log), np.mean(wait_cost), np.mean(travel_cost), np.max(hold_cost),
                 np.min(hold_cost),
                 np.mean(hold_cost), np.var(hold_cost)))
