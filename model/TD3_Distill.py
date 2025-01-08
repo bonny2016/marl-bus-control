@@ -103,13 +103,13 @@ class Critic(nn.Module):
         self.downstream_mlp_1 = self.create_target_mlp()
         self.downstream_mlp_2 = self.create_target_mlp()
 
-        self.other_mlp_1 = self.create_target_mlp()
-        self.other_mlp_2 = self.create_target_mlp()
+        self.passive_mlp_1 = self.create_target_mlp()
+        self.passive_mlp_2 = self.create_target_mlp()
 
         # Attention Layers
         self.upstream_attention = CrossAttentionLayer(7, 14, self.v_dim)
         self.downstream_attention = CrossAttentionLayer(7, 14, self.v_dim)
-        self.o_attention = CrossAttentionLayer(7, 7, self.v_dim)
+        self.passive_attention = CrossAttentionLayer(7, 7, self.v_dim)
 
         # Activation functions
         self.relu = nn.ReLU()
@@ -174,7 +174,7 @@ class Critic(nn.Module):
 
     def forward(self, xs):
         x_list, a_list, fp_list = xs
-        u_x_targets, d_x_targets, o_x_targets, ego_targets = [], [], [], []
+        u_x_targets, d_x_targets, p_x_targets, ego_targets = [], [], [], []
 
         for x, fp, a in zip(x_list, fp_list, a_list):
             s = torch.tensor(x, dtype=torch.float32)
@@ -192,14 +192,14 @@ class Critic(nn.Module):
 
             # Separate ego, upstream, downstream, and other states
             ego_x = merged_s[0:1, :7]
-            u_x = merged_s[(merged_s[:, 2] < subject_location) & (merged_s[:, -1] == 1)][:, :-1]
-            d_x = merged_s[(merged_s[:, 2] > subject_location) & (merged_s[:, -1] == 1)][:, :-1]
-            o_x = merged_s[merged_s[:, -1] == 0][1:, :7]
+            active_up_x = merged_s[(merged_s[:, 2] < subject_location) & (merged_s[:, -1] == 1)][:, :-1]
+            active_down_x = merged_s[(merged_s[:, 2] > subject_location) & (merged_s[:, -1] == 1)][:, :-1]
+            passive_x = merged_s[merged_s[:, -1] == 0][1:, :7]
 
             # Compute attention targets
-            u_x_targets.append(self.compute_attention_target(self.upstream_attention, ego_x, u_x))
-            d_x_targets.append(self.compute_attention_target(self.upstream_attention, ego_x, d_x))
-            o_x_targets.append(self.compute_attention_target(self.o_attention, ego_x, o_x))
+            u_x_targets.append(self.compute_attention_target(self.upstream_attention, ego_x, active_up_x))
+            d_x_targets.append(self.compute_attention_target(self.upstream_attention, ego_x, active_down_x))
+            p_x_targets.append(self.compute_attention_target(self.passive_attention, ego_x, passive_x))
 
             ego_target = merged_s[0:1, [3, 4, 5, 6]].clone()
             ego_targets.append(ego_target.squeeze())
@@ -207,18 +207,17 @@ class Critic(nn.Module):
         # Stack and normalize targets
         u_x_targets = self.bn(torch.stack(u_x_targets, dim=0))
         d_x_targets = self.bn(torch.stack(d_x_targets, dim=0))
-        o_x_targets = self.bn(torch.stack(o_x_targets, dim=0))
+        o_x_targets = self.bn(torch.stack(p_x_targets, dim=0))
         ego_targets = torch.stack(ego_targets, dim=0)
 
         # Compute final MLP outputs for attention and ego critic
-        u_x_1 = self.upstream_mlp_1(u_x_targets)
-        u_x_2 = self.upstream_mlp_2(u_x_targets)
+        u_x_1, u_x_2 = self.upstream_mlp_1(u_x_targets), self.upstream_mlp_2(u_x_targets)
         d_x_1, d_x_2 = self.downstream_mlp_1(d_x_targets), self.downstream_mlp_2(d_x_targets)
-        o_x_1, o_x_2 = self.other_mlp_1(o_x_targets), self.other_mlp_2(o_x_targets)
+        p_x_1, p_x_2 = self.passive_mlp_1(o_x_targets), self.passive_mlp_2(o_x_targets)
         Q1 = self.ego_mlp(ego_targets)
 
         # Aggregate outputs
-        G1, G2 = Q1 + u_x_1 + d_x_1 + o_x_1, Q1 + u_x_2 + d_x_2 + o_x_2
+        G1, G2 = Q1 + u_x_1 + d_x_1 + p_x_1, Q1 + u_x_2 + d_x_2 + p_x_2
         return G1.view(-1, 1), G2.view(-1, 1)
 
 
@@ -227,7 +226,8 @@ class Agent():
         random.seed(seed)
         self.seed = seed
         self.name = name
-        self.gamma = 0.9
+        # self.gamma = 0.9
+        self.gamma = 1
         self.state_dim = state_dim
         self.learn_step_counter = 0
         self.policy_freq = policy_freq
@@ -322,7 +322,6 @@ class Agent():
             batch_s.append(s)
             _fp_ = np.array(copy.deepcopy(fp))
             _fp_ = torch.tensor(_fp_, dtype=torch.float32)
-            # _fp_[0, self.state_dim] = self.actor([torch.tensor(s, dtype=torch.float32)])[0].detach()
             batch_fp_critic_t.append(_fp_)
             batch_actor_a.append(self.actor([torch.tensor(s, dtype=torch.float32)])[0])
             batch_fp.append(torch.FloatTensor(fp))
@@ -345,7 +344,6 @@ class Agent():
             nb_a = self.actor_target(batch_ns_tensor).detach().view(-1, 1)
             noise = (torch.randn_like(nb_a) * self.policy_noise).clamp(0, self.noise_clip)
             nb_a = (nb_a + noise).clamp(0, 3.0)
-            # nb_a = (nb_a + noise)
             Q1_, Q2_ = self.critic_target(
                 [batch_ns, nb_a, b_nfp_pad])
             Q_ = torch.min(Q1_, Q2_)

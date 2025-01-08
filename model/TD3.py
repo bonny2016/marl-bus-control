@@ -265,47 +265,8 @@ class Agent():
         return a
 
     def distill_from_others(self, memories, batch=1024, epochs=20):
-        self.actor_optim = torch.optim.Adam(self.actor.parameters(), lr=0.0001)
-        self.actor.train()
+        pass
 
-        # Sample a batch from the memories
-        batch_s, batch_a = [], []
-        memory = random.sample(memories, batch)
-        for s, fp, a, r, ns, nfp in memory:
-            batch_s.append(s)
-            batch_a.append(a)
-
-        # Convert batch to tensors
-        batch_a = torch.tensor(batch_a, dtype=torch.float).view(-1, 1)
-
-        for epoch in range(epochs):
-            total_loss = 0.0
-            student_actions = []
-
-            for state in batch_s:
-                state_tensor = torch.FloatTensor(state).unsqueeze(0)
-
-                # Forward pass for distilled agent
-                student_action = self.actor(state_tensor)
-                student_actions.append(student_action)
-
-            # Stack student actions into a single tensor
-            student_actions = torch.cat(student_actions, dim=0)
-
-            # Calculate distillation loss
-            loss = F.mse_loss(student_actions, batch_a)
-
-            # Backpropagation
-            self.actor_optim.zero_grad()
-            loss.backward()
-            self.actor_optim.step()
-
-            total_loss += loss.item()
-
-            avg_loss = total_loss / len(batch_s)
-            print(f"Distill Epoch {epoch + 1}/{epochs}, Average Loss: {avg_loss:.4f}")
-
-        return avg_loss
 
     def learn(self, memories, batch=16):
         if len(memories) < batch:

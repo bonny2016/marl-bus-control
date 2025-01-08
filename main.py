@@ -9,7 +9,7 @@ import torch
 
 parser = argparse.ArgumentParser(description='param')
 parser.add_argument("--seed", type=int, default=2)  # random seed
-parser.add_argument("--model", type=str, default='TD3_Distill_ActiveOnly')  # caac  ddpg maddpg
+parser.add_argument("--model", type=str, default='DDPG_Distill')  # caac  ddpg maddpg
 parser.add_argument("--data", type=str, default='A_0_1')  # used data prefix
 parser.add_argument("--para_flag", type=str, default='A_0_1')  # stored parameter prefix
 parser.add_argument("--episode", type=int, default=100)  # training episode
@@ -33,7 +33,8 @@ if args.model == 'TD3_Distill':
     from model.TD3_Distill import Agent
 if args.model == 'TD3_Distill_ActiveOnly':
     from model.TD3_Distill_ActiveOnly import Agent
-
+if args.model == 'DDPG_Distill':
+    from model.DDPG_Distill import Agent
 
 def load_student(state_dim):
 
@@ -81,6 +82,7 @@ def train(args):
             for k, v in eng.route_list.items():
                 agent = Agent(state_dim=state_dim, name='', seed=args.seed)
                 agents[k] = agent
+    last_distilled = False
     for ep in range(args.episode):
         stop_list_ = copy.deepcopy(stop_list)
         bus_list_ = copy.deepcopy(bus_list)
@@ -131,15 +133,22 @@ def train(args):
             name=str(args.para_flag) + str('_') + str(args.share_scale) + str('_') + str(args.model) + str('_'),
             train=args.train)
         abspath = os.path.abspath(os.path.dirname(__file__))
-        name = abspath + "/log/" + args.data + args.model
+        name = abspath + f"/log/{args.data}{args.model}_{args.n_students}_students"
 
         name += str(int(args.weight))
         if args.all == 1:
             name += 'all'
         if args.share_scale == 1:
             name += 'shared_model'
+        if last_distilled:
+            log['distilled'] = 1
+            log['teacher_variance'] = teacher_actor_variance
+        else:
+            log['distilled'] = 0
+            log['teacher_variance'] = 0
         avg_reward = U.train_result_track(eng=eng, ep=ep, qloss_log=qloss_log, ploss_log=ploss_log, log=log, name=name,
                                           seed=args.seed)
+
         if args.share_scale == 1 or args.n_students == 1:
             if ep % 5 == 0 and ep > 10 and args.restore == 0:
                 # store model
@@ -148,6 +157,7 @@ def train(args):
                         '_') + str(args.model) + str('_'))
         else:
             if avg_reward > -1 and ep > 10 and ep % 5 == 0:
+                last_distilled = True
                 agent_to_save = agents_pool[np.random.randint(0, args.n_students)]
 
                 agent_to_save.save(
@@ -155,8 +165,8 @@ def train(args):
                         '_') + str(args.model) + str('_'))
 
                 student_agent = load_student(state_dim=state_dim)
-                memory = eng.merge_memory(student_agent)
-                student_agent.distill_from_others(memory)
+                teacher_actor_variance, student_agent = eng.distill(student_agent, agents_pool)
+                log['teacher_variance'] = teacher_actor_variance
                 student_agent.save(
                     str(args.para_flag) + str('_') + str(args.share_scale) + str('_') + str(args.weight) + str(
                         '_') + str(args.model) + str('_'))
@@ -166,6 +176,7 @@ def train(args):
                     agent.load(
                         str(args.para_flag) + str('_') + str(args.share_scale) + str('_') + str(args.weight) + str(
                             '_') + str(args.model) + str('_'))
+
         eng.close()
 
 

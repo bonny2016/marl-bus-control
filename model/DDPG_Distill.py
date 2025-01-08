@@ -98,18 +98,15 @@ class Critic(nn.Module):
 
         # Upstream, Downstream, and Other MLPs
         self.upstream_mlp_1 = self.create_target_mlp()
-        self.upstream_mlp_2 = self.create_target_mlp()
 
         self.downstream_mlp_1 = self.create_target_mlp()
-        self.downstream_mlp_2 = self.create_target_mlp()
 
-        # self.passive_mlp_1 = self.create_target_mlp()
-        # self.passive_mlp_2 = self.create_target_mlp()
+        self.passive_mlp_1 = self.create_target_mlp()
 
         # Attention Layers
         self.upstream_attention = CrossAttentionLayer(7, 14, self.v_dim)
         self.downstream_attention = CrossAttentionLayer(7, 14, self.v_dim)
-        # self.passive_attention = CrossAttentionLayer(7, 7, self.v_dim)
+        self.passive_attention = CrossAttentionLayer(7, 7, self.v_dim)
 
         # Activation functions
         self.relu = nn.ReLU()
@@ -194,12 +191,12 @@ class Critic(nn.Module):
             ego_x = merged_s[0:1, :7]
             active_up_x = merged_s[(merged_s[:, 2] < subject_location) & (merged_s[:, -1] == 1)][:, :-1]
             active_down_x = merged_s[(merged_s[:, 2] > subject_location) & (merged_s[:, -1] == 1)][:, :-1]
-            # passive_x = merged_s[merged_s[:, -1] == 0][1:, :7]
+            passive_x = merged_s[merged_s[:, -1] == 0][1:, :7]
 
             # Compute attention targets
             u_x_targets.append(self.compute_attention_target(self.upstream_attention, ego_x, active_up_x))
             d_x_targets.append(self.compute_attention_target(self.upstream_attention, ego_x, active_down_x))
-            # p_x_targets.append(self.compute_attention_target(self.passive_attention, ego_x, passive_x))
+            p_x_targets.append(self.compute_attention_target(self.passive_attention, ego_x, passive_x))
 
             ego_target = merged_s[0:1, [3, 4, 5, 6]].clone()
             ego_targets.append(ego_target.squeeze())
@@ -207,18 +204,18 @@ class Critic(nn.Module):
         # Stack and normalize targets
         u_x_targets = self.bn(torch.stack(u_x_targets, dim=0))
         d_x_targets = self.bn(torch.stack(d_x_targets, dim=0))
-        # o_x_targets = self.bn(torch.stack(p_x_targets, dim=0))
+        o_x_targets = self.bn(torch.stack(p_x_targets, dim=0))
         ego_targets = torch.stack(ego_targets, dim=0)
 
         # Compute final MLP outputs for attention and ego critic
-        u_x_1, u_x_2 = self.upstream_mlp_1(u_x_targets), self.upstream_mlp_2(u_x_targets)
-        d_x_1, d_x_2 = self.downstream_mlp_1(d_x_targets), self.downstream_mlp_2(d_x_targets)
-        # p_x_1, p_x_2 = self.passive_mlp_1(o_x_targets), self.passive_mlp_2(o_x_targets)
+        u_x_1 = self.upstream_mlp_1(u_x_targets)
+        d_x_1 = self.downstream_mlp_1(d_x_targets)
+        p_x_1 = self.passive_mlp_1(o_x_targets)
         Q1 = self.ego_mlp(ego_targets)
 
         # Aggregate outputs
-        G1, G2 = Q1 + u_x_1 + d_x_1, Q1 + u_x_2 + d_x_2
-        return G1.view(-1, 1), G2.view(-1, 1)
+        G1 = Q1 + u_x_1 + d_x_1 + p_x_1
+        return G1.view(-1, 1)
 
 
 class Agent():
@@ -263,6 +260,45 @@ class Agent():
         # Clip the action to be within the valid action range
         a = np.clip(a, 0, 3.0)
         return a
+
+    def actor_output_variance(self, memories, agents_pool, batch_size=1024):
+        """
+        Calculates the variance of the outputs from a pool of actor models.
+
+        Parameters:
+            memories (list): List of replay memory tuples (s, fp, a, r, ns, nfp).
+            batch_size (int): Number of samples to draw from the memories.
+            agents_pool (list): List of agents, each having an actor model.
+
+        Returns:
+            torch.Tensor: Variance of outputs across agents for each state in the batch.
+        """
+        # Sample a batch from the memories
+        batch_s = []
+        memory = random.sample(memories, batch_size)
+        for s, _, _, _, _, _ in memory:
+            batch_s.append(s)
+
+        # Set all actors to evaluation mode
+        for agent in agents_pool:
+            agent.actor.eval()
+
+        # Collect results from each actor
+        teacher_results = []
+        for s in batch_s:
+            outputs_per_state = []
+            state_tensor = torch.FloatTensor(s).unsqueeze(0)
+            for agent in agents_pool:
+                with torch.no_grad():  # Disable gradients for inference
+                    result = agent.actor(state_tensor)  # Ensure correct shape for input
+                    outputs_per_state.append(result.squeeze(0))  # Remove batch dimension
+            teacher_results.append(torch.stack(outputs_per_state))  # Shape: [num_agents, output_dim]
+
+        # Calculate variance of outputs across agents for each state
+        teacher_results = torch.stack(teacher_results)  # Shape: [batch_size, num_agents, output_dim]
+        output_variances = teacher_results.var(dim=1)  # Variance across agents for each state
+
+        return output_variances.mean().item()
 
     def distill_from_others(self, memories, batch=1024, epochs=20):
         self.actor_optim = torch.optim.Adam(self.actor.parameters(), lr=0.0001)
@@ -339,26 +375,24 @@ class Agent():
         b_r = torch.tensor(np.array(batch_r), dtype=torch.float).view(-1, 1)
 
         def critic_learn():
-            Q1, Q2 = self.critic([batch_s, b_a, b_fp_pad])
+            Q = self.critic([batch_s, b_a, b_fp_pad])
             batch_ns_tensor = [torch.tensor(state, dtype=torch.float) for state in batch_ns]
             nb_a = self.actor_target(batch_ns_tensor).detach().view(-1, 1)
             noise = (torch.randn_like(nb_a) * self.policy_noise).clamp(0, self.noise_clip)
             nb_a = (nb_a + noise).clamp(0, 3.0)
-            Q1_, Q2_ = self.critic_target(
-                [batch_ns, nb_a, b_nfp_pad])
-            Q_ = torch.min(Q1_, Q2_)
+            Q_ = self.critic_target([batch_ns, nb_a, b_nfp_pad])
             q_target = b_r + self.gamma * (Q_.detach()).view(-1, 1)
 
             loss_fn = nn.MSELoss()
-            qloss = loss_fn(Q1, q_target) + loss_fn(Q2, q_target)
+            qloss = loss_fn(Q, q_target)
             self.critic_optim.zero_grad()
             qloss.backward()
             self.critic_optim.step()
             return qloss.item()
 
         def actor_learn():
-            Q1, Q2 = self.critic([batch_s, batch_actor_a.view(-1, 1), batch_fp_critic_t])
-            policy_loss = -torch.mean(Q1)
+            Q= self.critic([batch_s, batch_actor_a.view(-1, 1), batch_fp_critic_t])
+            policy_loss = -torch.mean(Q)
             self.actor_optim.zero_grad()
             policy_loss.backward()
             self.actor_optim.step()
