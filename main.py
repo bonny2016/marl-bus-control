@@ -8,8 +8,8 @@ from random import seed
 import torch
 
 parser = argparse.ArgumentParser(description='param')
-parser.add_argument("--seed", type=int, default=1)  # random seed
-parser.add_argument("--model", type=str, default='TD3_Distill')  # caac  ddpg maddpg
+parser.add_argument("--seed", type=int, default=2)  # random seed
+parser.add_argument("--model", type=str, default='TD3_Distill_ActiveOnly')  # caac  ddpg maddpg
 parser.add_argument("--data", type=str, default='A_0_1')  # used data prefix
 parser.add_argument("--para_flag", type=str, default='A_0_1')  # stored parameter prefix
 parser.add_argument("--episode", type=int, default=100)  # training episode
@@ -18,7 +18,7 @@ parser.add_argument("--arr_hold", type=int, default=1)  # arr_hold=1: determine 
 parser.add_argument("--train", type=int, default=1)  # train=1: training phase
 parser.add_argument("--restore", type=int, default=0)  # restore=1: restore the model
 parser.add_argument("--share_scale", type=int, default=0)
-parser.add_argument("--n_students", type=int, default=4)  # n_students=4: number of learning agents
+parser.add_argument("--n_students", type=int, default=3)  # n_students=4: number of learning agents
 parser.add_argument("--all", type=int,
                     default=1)  # all=0 for considering only forward/backward buses; all=1 for all buses
 parser.add_argument("--vis", type=int, default=0)  # vis=1 to visualize bus trajectory in test phase
@@ -148,14 +148,15 @@ def train(args):
                         '_') + str(args.model) + str('_'))
         else:
             if avg_reward > -1 and ep > 10 and ep % 5 == 0:
-                agent_to_save = agents_pool[np.random.randint(0, 4)]
+                agent_to_save = agents_pool[np.random.randint(0, args.n_students)]
 
                 agent_to_save.save(
                     str(args.para_flag) + str('_') + str(args.share_scale) + str('_') + str(args.weight) + str(
                         '_') + str(args.model) + str('_'))
 
                 student_agent = load_student(state_dim=state_dim)
-                student_agent = eng.distill(student_agent)
+                memory = eng.merge_memory(student_agent)
+                student_agent.distill_from_others(memory)
                 student_agent.save(
                     str(args.para_flag) + str('_') + str(args.share_scale) + str('_') + str(args.weight) + str(
                         '_') + str(args.model) + str('_'))
