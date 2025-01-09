@@ -8,17 +8,17 @@ from random import seed
 import torch
 
 parser = argparse.ArgumentParser(description='param')
-parser.add_argument("--seed", type=int, default=2)  # random seed
+parser.add_argument("--seed", type=int, default=1)  # random seed
 parser.add_argument("--model", type=str, default='DDPG_Distill')  # caac  ddpg maddpg
 parser.add_argument("--data", type=str, default='A_0_1')  # used data prefix
 parser.add_argument("--para_flag", type=str, default='A_0_1')  # stored parameter prefix
-parser.add_argument("--episode", type=int, default=100)  # training episode
+parser.add_argument("--episode", type=int, default=200)  # training episode
 parser.add_argument("--overtake", type=int, default=0)  # overtake=0: not allow overtaking
 parser.add_argument("--arr_hold", type=int, default=1)  # arr_hold=1: determine holding once bus arriving bus stop
 parser.add_argument("--train", type=int, default=1)  # train=1: training phase
 parser.add_argument("--restore", type=int, default=0)  # restore=1: restore the model
 parser.add_argument("--share_scale", type=int, default=0)
-parser.add_argument("--n_students", type=int, default=3)  # n_students=4: number of learning agents
+parser.add_argument("--n_students", type=int, default=4)  # n_students=4: number of learning agents
 parser.add_argument("--all", type=int,
                     default=1)  # all=0 for considering only forward/backward buses; all=1 for all buses
 parser.add_argument("--vis", type=int, default=0)  # vis=1 to visualize bus trajectory in test phase
@@ -46,6 +46,13 @@ def load_student(state_dim):
         print("no model saved yet")
     return student_agent
 
+def set_eval_all_agents(agents):
+    for agent in agents:
+        agent.actor.eval()
+
+def set_train_all_agents(agents):
+    for agent in agents:
+        agent.actor.train()
 
 def train(args):
     stop_list, pax_num = U.getStopList(args.data)
@@ -83,6 +90,7 @@ def train(args):
                 agent = Agent(state_dim=state_dim, name='', seed=args.seed)
                 agents[k] = agent
     last_distilled = False
+    teacher_actor_variance = 0
     for ep in range(args.episode):
         stop_list_ = copy.deepcopy(stop_list)
         bus_list_ = copy.deepcopy(bus_list)
@@ -140,16 +148,20 @@ def train(args):
             name += 'all'
         if args.share_scale == 1:
             name += 'shared_model'
-        if last_distilled:
-            log['distilled'] = 1
-            log['teacher_variance'] = teacher_actor_variance
+        if args.share_scale == 1 or len(agents_pool) == 1:
+            teacher_actor_mean, teacher_actor_variance = 0, 0
         else:
-            log['distilled'] = 0
-            log['teacher_variance'] = 0
+            set_eval_all_agents(agents_pool)
+            teacher_actor_mean, teacher_actor_variance = eng.check_variance(agents_pool)
+            set_train_all_agents(agents_pool)
+        log['distilled'] = last_distilled
+        log['teacher_mean'] = teacher_actor_mean
+        log['teacher_variance'] = teacher_actor_variance
+        log['teachers'] = len(agents_pool)
         avg_reward = U.train_result_track(eng=eng, ep=ep, qloss_log=qloss_log, ploss_log=ploss_log, log=log, name=name,
                                           seed=args.seed)
-
-        if args.share_scale == 1 or args.n_students == 1:
+        last_distilled = False
+        if args.share_scale == 1 or len(agents_pool) == 1:
             if ep % 5 == 0 and ep > 10 and args.restore == 0:
                 # store model
                 for k, v in agents.items():
@@ -158,25 +170,29 @@ def train(args):
         else:
             if avg_reward > -1 and ep > 10 and ep % 5 == 0:
                 last_distilled = True
-                agent_to_save = agents_pool[np.random.randint(0, args.n_students)]
+                # agent_to_save = agents_pool[np.random.randint(0, args.n_students)]
+                #
+                # agent_to_save.save(
+                #     str(args.para_flag) + str('_') + str(args.share_scale) + str('_') + str(args.weight) + str(
+                #         '_') + str(args.model) + str('_'))
+                # student_agent = load_student(state_dim=state_dim)
+                student_agent = agents_pool[np.random.randint(0, args.n_students)]
+                student_agent = eng.distill(student_agent, agents_pool)
 
-                agent_to_save.save(
-                    str(args.para_flag) + str('_') + str(args.share_scale) + str('_') + str(args.weight) + str(
-                        '_') + str(args.model) + str('_'))
-
-                student_agent = load_student(state_dim=state_dim)
-                teacher_actor_variance, student_agent = eng.distill(student_agent, agents_pool)
-                log['teacher_variance'] = teacher_actor_variance
                 student_agent.save(
                     str(args.para_flag) + str('_') + str(args.share_scale) + str('_') + str(args.weight) + str(
                         '_') + str(args.model) + str('_'))
-                # for k, v in eng.bus_list.items():
+                # Merge if similar agents or reaching end of training
+                # if len(agents_pool) > 1 and ep >= 80:
+                #     agents_pool = [student_agent]
+                #     for i, (k, v) in enumerate(eng.bus_list.items()):
+                #         agents[k] = student_agent
                 for agent in agents_pool:
                     agent.lr_decay()
                     agent.load(
                         str(args.para_flag) + str('_') + str(args.share_scale) + str('_') + str(args.weight) + str(
                             '_') + str(args.model) + str('_'))
-
+                set_train_all_agents(agents_pool)
         eng.close()
 
 
