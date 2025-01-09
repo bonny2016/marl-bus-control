@@ -275,8 +275,8 @@ class Agent():
         """
         # Sample a batch from the memories
         batch_s = []
-        memory = random.sample(memories, batch_size)
-        for s, _, _, _, _, _ in memory:
+        # memory = random.sample(memories, batch_size)
+        for s, _, _, _, _, _ in memories:
             batch_s.append(s)
 
         # Set all actors to evaluation mode
@@ -290,15 +290,15 @@ class Agent():
             state_tensor = torch.FloatTensor(s).unsqueeze(0)
             for agent in agents_pool:
                 with torch.no_grad():  # Disable gradients for inference
-                    result = agent.actor(state_tensor)  # Ensure correct shape for input
+                    result = agent.actor(state_tensor) * 180.0  # Ensure correct shape for input
                     outputs_per_state.append(result.squeeze(0))  # Remove batch dimension
             teacher_results.append(torch.stack(outputs_per_state))  # Shape: [num_agents, output_dim]
 
         # Calculate variance of outputs across agents for each state
-        teacher_results = torch.stack(teacher_results)  # Shape: [batch_size, num_agents, output_dim]
+        teacher_results = torch.stack(teacher_results)  # Shape: [batch_size, num_agents, output_dim], i.e [2000,4,1]
         output_variances = teacher_results.var(dim=1)  # Variance across agents for each state
-
-        return output_variances.mean().item()
+        output_avg = teacher_results.mean(dim=1)
+        return output_avg.mean().item(), output_variances.mean().item()
 
     def distill_from_others(self, memories, batch=1024, epochs=20):
         self.actor_optim = torch.optim.Adam(self.actor.parameters(), lr=0.0001)
