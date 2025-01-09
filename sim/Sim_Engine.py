@@ -514,6 +514,16 @@ class Engine():
         snapshot_sorted = snapshot[snapshot[:, -1].argsort()[::-1]]
         return snapshot_sorted
 
+    def check_variance(self, teachers):
+        if self.share_scale == 0:
+            for rid, r in self.route_list.items():
+                memory = deque(maxlen=2000)
+                for i in range(len(r.bus_list)):
+                    bus_id = r.bus_list[i]
+                    if len(self.GM.memory[bus_id]) > 0:
+                        memory.extend(self.GM.memory[bus_id])
+                teacher_mean, teacher_variance = teachers[0].actor_output_variance(memory, teachers)
+        return teacher_mean, teacher_variance
 
     def distill(self, student, teachers):
         if self.share_scale == 0:
@@ -523,9 +533,9 @@ class Engine():
                     bus_id = r.bus_list[i]
                     if len(self.GM.memory[bus_id]) > 0:
                         memory.extend(self.GM.memory[bus_id])
-                teacher_variance = student.actor_output_variance(memory, teachers)
+                # teacher_variance = student.actor_output_variance(memory, teachers)
                 student.distill_from_others(memory)
-        return teacher_variance, student
+        return student
 
     def learn(self):
         ploss_set = []
