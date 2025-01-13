@@ -12,16 +12,16 @@ parser.add_argument("--seed", type=int, default=2)  # random seed
 parser.add_argument("--model", type=str, default='DDPG_Distill')  # caac  ddpg maddpg
 parser.add_argument("--data", type=str, default='A_0_1')  # used data prefix
 parser.add_argument("--para_flag", type=str, default='A_0_1')  # stored parameter prefix
-parser.add_argument("--episode", type=int, default=200)  # training episode
+parser.add_argument("--episode", type=int, default=1)  # training episode
 parser.add_argument("--overtake", type=int, default=0)  # overtake=0: not allow overtaking
 parser.add_argument("--arr_hold", type=int, default=1)  # arr_hold=1: determine holding once bus arriving bus stop
-parser.add_argument("--train", type=int, default=1)  # train=1: training phase
-parser.add_argument("--restore", type=int, default=0)  # restore=1: restore the model
-parser.add_argument("--share_scale", type=int, default=0)
-parser.add_argument("--n_students", type=int, default=4)  # n_students=4: number of learning agents
+parser.add_argument("--train", type=int, default=0)  # train=1: training phase
+parser.add_argument("--restore", type=int, default=1)  # restore=1: restore the model
+parser.add_argument("--share_scale", type=int, default=1)
+parser.add_argument("--n_students", type=int, default=3)  # n_students=4: number of learning agents
 parser.add_argument("--all", type=int,
                     default=1)  # all=0 for considering only forward/backward buses; all=1 for all buses
-parser.add_argument("--vis", type=int, default=0)  # vis=1 to visualize bus trajectory in test phase
+parser.add_argument("--vis", type=int, default=1)  # vis=1 to visualize bus trajectory in test phase
 parser.add_argument("--weight", type=int, default=2)  # weight for action penalty
 parser.add_argument("--control", type=int,
                     default=2)  # 0 for no control;  1 for FH; 2 for RL (ddpg, maddpg)

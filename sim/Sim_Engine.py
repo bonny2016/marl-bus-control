@@ -39,8 +39,11 @@ class Engine():
         self.total_route_length = 0
 
         bus_ids = list(self.bus_list.keys())
+        # region_ids is used as key when storing bus history data.
+        # if sharing scale == 0: federated training, region_id is used to combine bus histories.
+        # else sharing scale == 1: no actual region so key is bus_id
         region_ids = list(range(self.n_agents))
-        self.GM = Memory(bus_ids, region_ids)
+        self.GM = Memory(bus_ids, bus_ids) if self.share_scale == 1 else Memory(bus_ids, region_ids)
         self.rs = {}
         for b_id, b in self.bus_list.items():
             self.reward_signal[b_id] = []
@@ -361,10 +364,11 @@ class Engine():
 
     # regional agents: split agent evenly across stop location.
     def select_region_id(self, bus, bus_stop):
-        length_per_agent = self.total_route_length / self.n_agents
-        # print("self.total_route_length:" , self.total_route_length , "length_per_agent:",length_per_agent, "bus_stop.loc:", bus_stop.loc)
-        # print("int(bus_stop.loc/length_per_agent):", int(bus_stop.loc/length_per_agent))
-        return int(bus_stop.loc/length_per_agent) % (self.n_agents - 1)
+        if self.share_scale:
+            return bus.id
+        else:
+            length_per_agent = self.total_route_length / self.n_agents
+            return int(bus_stop.loc/length_per_agent) % (self.n_agents - 1)
 
     def rl_control(self, bus, bus_stop):
         current_interval = self.simulation_step

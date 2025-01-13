@@ -269,10 +269,10 @@ def train_result_track(eng, ep, qloss_log, ploss_log, log, name='', seed=0):
         train_log['travel'] = [np.mean(travel_cost)]
         train_log['delay'] = [np.mean(delay)]
         train_log['AOD'] = AOD
-        train_log['distilled'] = [log['distilled']]
-        train_log['teachers'] = [log['teachers']]
-        train_log['teacher_mean'] = [log['teacher_mean']]
-        train_log['teacher_variance'] = [log['teacher_variance']]
+        train_log['distilled'] = [log.get('distilled', None)]
+        train_log['teachers'] = [log.get('teachers', None)]
+        # train_log['teacher_mean'] = [log['teacher_mean']]
+        # train_log['teacher_variance'] = [log['teacher_variance']]
         #
         # for k, v in headways_mean.items():
         #     train_log['headway_mean' + str(k)] = [np.mean(v)]

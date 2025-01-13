@@ -3,7 +3,7 @@ from collections import deque
 import random
 
 class Memory():
-    def __init__(self,members, groups):
+    def __init__(self, members, groups):
         self.memory = {}
 
         # temp memory to store last-step state and action because of no immediate feedback
