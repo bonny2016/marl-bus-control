@@ -4,5 +4,5 @@
 for seed in {1..10}
 do
     echo "Running with seed=$seed"
-    python main.py --model='DDPG_Distill' --seed=$seed --share_scale=0 --n_students=3 --episode=100
+    python main.py --model='DDPG_Distill' --seed=$seed --share_scale=0 --n_students=3 --episode=200
 done

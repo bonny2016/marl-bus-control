@@ -343,7 +343,7 @@ class Agent():
 
         return avg_loss
 
-    def learn(self, memories, batch=16):
+    def learn(self, memories, batch=256):
         if len(memories) < batch:
             return 0, 0
 

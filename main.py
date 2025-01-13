@@ -8,7 +8,7 @@ from random import seed
 import torch
 
 parser = argparse.ArgumentParser(description='param')
-parser.add_argument("--seed", type=int, default=1)  # random seed
+parser.add_argument("--seed", type=int, default=2)  # random seed
 parser.add_argument("--model", type=str, default='DDPG_Distill')  # caac  ddpg maddpg
 parser.add_argument("--data", type=str, default='A_0_1')  # used data prefix
 parser.add_argument("--para_flag", type=str, default='A_0_1')  # stored parameter prefix
@@ -62,7 +62,7 @@ def train(args):
     stop_list_ = copy.deepcopy(stop_list)
     dispatch_times, bus_list, route_list, simulation_step = U.init_bus_list(bus_routes)
     print('init...')
-    agents = {}
+    # agents = {}
     agents_pool = []
     student_agent = None
     if args.model != '':
@@ -70,7 +70,7 @@ def train(args):
                                 dispatch_times=dispatch_times,
                                 demand=0, simulation_step=simulation_step, route_list=route_list,
                                 hold_once_arr=args.arr_hold, is_allow_overtake=args.overtake,
-                                share_scale=args.share_scale,
+                                share_scale=args.share_scale, n_agents=args.n_students,
                                 all=args.all,
                                 weight=args.weight)
 
@@ -81,8 +81,8 @@ def train(args):
         # non share
         if args.share_scale == 0:
             agents_pool = [Agent(state_dim=state_dim, name='', seed=args.seed) for i in range(args.n_students)]
-            for i, (k, v) in enumerate(eng.bus_list.items()):
-                agents[k] = agents_pool[i % args.n_students]
+            # for i, (k, v) in enumerate(eng.bus_list.items()):
+            #     agents[k] = agents_pool[i % args.n_students]
         # share in route
         if args.share_scale == 1:
             agents = {}
@@ -90,7 +90,7 @@ def train(args):
                 agent = Agent(state_dim=state_dim, name='', seed=args.seed)
                 agents[k] = agent
     last_distilled = False
-    teacher_actor_variance = 0
+
     for ep in range(args.episode):
         stop_list_ = copy.deepcopy(stop_list)
         bus_list_ = copy.deepcopy(bus_list)
@@ -102,9 +102,10 @@ def train(args):
                                 dispatch_times=dispatch_times,
                                 demand=0, simulation_step=simulation_step, route_list=route_list,
                                 hold_once_arr=args.arr_hold, is_allow_overtake=args.overtake,
-                                share_scale=args.share_scale, weight=args.weight)
+                                share_scale=args.share_scale, n_agents=args.n_students,
+                                weight=args.weight)
 
-        eng.agents = agents
+        eng.agents = agents_pool
         if ep > 0:
             if memory_copy != None:
                 eng.GM = memory_copy
@@ -117,14 +118,14 @@ def train(args):
                 print(str(args.para_flag) + str('_') + str(args.share_scale) + str('_') + str(args.model) + str('_'))
                 v.load(str(args.para_flag) + str('_') + str(args.share_scale) + str('_') + str(args.weight) + str(
                     '_') + str(args.model) + str('_'))
-
+        # run a episode
         Flag = True
         while Flag:
             Flag = eng.sim()
         ploss_log = []
         qloss_log = []
         if args.control > 1 and args.restore == 0:
-            update_iter = 3
+            update_iter = 5
             for _ in range(update_iter):
                 if ep >= 0:
                     ploss, qloss, trained = eng.learn()
@@ -148,12 +149,13 @@ def train(args):
             name += 'all'
         if args.share_scale == 1:
             name += 'shared_model'
-        if args.share_scale == 1 or len(agents_pool) == 1:
-            teacher_actor_mean, teacher_actor_variance = 0, 0
-        else:
-            set_eval_all_agents(agents_pool)
-            teacher_actor_mean, teacher_actor_variance = eng.check_variance(agents_pool)
-            set_train_all_agents(agents_pool)
+        teacher_actor_mean, teacher_actor_variance = 0, 0
+        # if args.share_scale == 1 or len(agents_pool) == 1:
+        #     teacher_actor_mean, teacher_actor_variance = 0, 0
+        # else:
+        #     set_eval_all_agents(agents_pool)
+        #     teacher_actor_mean, teacher_actor_variance = eng.check_variance(agents_pool)
+        #     set_train_all_agents(agents_pool)
         log['distilled'] = last_distilled
         log['teacher_mean'] = teacher_actor_mean
         log['teacher_variance'] = teacher_actor_variance
@@ -181,7 +183,7 @@ def train(args):
 
                 student_agent.save(
                     str(args.para_flag) + str('_') + str(args.share_scale) + str('_') + str(args.weight) + str(
-                        '_') + str(args.model) + str('_'))
+                        '_') + str(args.model) + str(args.n_students) + 'students' + str('_'))
                 # Merge if similar agents or reaching end of training
                 # if len(agents_pool) > 1 and ep >= 80:
                 #     agents_pool = [student_agent]
@@ -191,7 +193,7 @@ def train(args):
                     agent.lr_decay()
                     agent.load(
                         str(args.para_flag) + str('_') + str(args.share_scale) + str('_') + str(args.weight) + str(
-                            '_') + str(args.model) + str('_'))
+                            '_') + str(args.model) + str(args.n_students) + 'students' + str('_'))
                 set_train_all_agents(agents_pool)
         eng.close()
 
@@ -209,7 +211,7 @@ def evaluate(args):
                                 dispatch_times=dispatch_times,
                                 demand=0, simulation_step=simulation_step, route_list=route_list,
                                 hold_once_arr=args.arr_hold, is_allow_overtake=args.overtake,
-                                share_scale=args.share_scale, weight=args.weight)
+                                share_scale=args.share_scale, n_agents=1, weight=args.weight)
 
         bus_list = eng.bus_list
         # non share

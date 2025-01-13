@@ -3,15 +3,17 @@ from collections import deque
 import random
 
 class Memory():
-    def __init__(self,members):
+    def __init__(self,members, groups):
         self.memory = {}
 
         # temp memory to store last-step state and action because of no immediate feedback
         self.temp_memory = {}
         self.experience = 0
         for m in members:
-            self.memory[m] = deque(maxlen=2000)
             self.temp_memory[m]={'s':[],'a':[],'fp':[],'r':[] }
+        for g in groups:
+            self.memory[g] = deque(maxlen=2000)
+
 
 
 

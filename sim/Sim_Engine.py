@@ -8,14 +8,13 @@ from collections import deque
 
 class Engine():
     def __init__(self, bus_list, busstop_list, route_list, simulation_step, dispatch_times, demand=0, agents=None,
-                 share_scale=0, is_allow_overtake=0, hold_once_arr=1, control_type=1, seed=1, all=0, weight=0):
+                 share_scale=0, n_agents=1, is_allow_overtake=0, hold_once_arr=1, control_type=1, seed=1, all=0, weight=0):
         self.all = all
         self.busstop_list = busstop_list
         self.simulation_step = simulation_step
         self.pax_list = {}  # passenger on road
         self.arr_pax_list = {}  # passenger who has finished trip
         self.dispatch_buslist = {}
-        self.agents = {}
         self.route_list = route_list
         self.dispatch_buslist = {}
         self.is_allow_overtake = is_allow_overtake
@@ -33,13 +32,15 @@ class Engine():
         self.demand = demand
         self.records = []
         self.share_scale = share_scale
+        self.n_agents = n_agents if share_scale == 0 else 1
         self.step = 0
         self.dispatch_times = dispatch_times
         self.cvlog = []
         self.total_route_length = 0
 
-        members = list(self.bus_list.keys())
-        self.GM = Memory(members)
+        bus_ids = list(self.bus_list.keys())
+        region_ids = list(range(self.n_agents))
+        self.GM = Memory(bus_ids, region_ids)
         self.rs = {}
         for b_id, b in self.bus_list.items():
             self.reward_signal[b_id] = []
@@ -358,6 +359,13 @@ class Engine():
 
         return 0
 
+    # regional agents: split agent evenly across stop location.
+    def select_region_id(self, bus, bus_stop):
+        length_per_agent = self.total_route_length / self.n_agents
+        # print("self.total_route_length:" , self.total_route_length , "length_per_agent:",length_per_agent, "bus_stop.loc:", bus_stop.loc)
+        # print("int(bus_stop.loc/length_per_agent):", int(bus_stop.loc/length_per_agent))
+        return int(bus_stop.loc/length_per_agent) % (self.n_agents - 1)
+
     def rl_control(self, bus, bus_stop):
         current_interval = self.simulation_step
         state = []
@@ -369,7 +377,9 @@ class Engine():
                 break
         var, mean = self.route_info(bus)
 
-        agent = self.agents[bus.route_id] if self.share_scale else self.agents[bus.id]
+        # agent = self.agents[bus.route_id] if self.share_scale else self.agents[bus.id]
+        agent = self.agents[bus.route_id] if self.share_scale else self.agents[self.select_region_id(bus, bus_stop)]
+
         # action = np.array(self.agents[bus.id].choose_action(state))
         action = np.array(agent.choose_action(state))
         ego_state = np.atleast_1d(state[0, :])
@@ -431,7 +441,8 @@ class Engine():
             nfp = self.GM.temp_memory[bus.id]['fp'][-1]
             a = self.GM.temp_memory[bus.id]['a'][-3]
             r = self.GM.temp_memory[bus.id]['r'][-2]
-            self.GM.remember(s, fp, a, r, ns, nfp, bus.id)
+            # self.GM.remember(s, fp, a, r, ns, nfp, bus.id)
+            self.GM.remember(s, fp, a, r, ns, nfp, self.select_region_id(bus, bus_stop))
         self.action_record.append(action)
         action = np.clip(abs(action), 0., 3.)
         self.bus_list[bus.id].last_vist_interval = self.simulation_step
@@ -527,14 +538,13 @@ class Engine():
 
     def distill(self, student, teachers):
         if self.share_scale == 0:
-            for rid, r in self.route_list.items():
-                memory = deque(maxlen=2000)
-                for i in range(len(r.bus_list)):
-                    bus_id = r.bus_list[i]
-                    if len(self.GM.memory[bus_id]) > 0:
-                        memory.extend(self.GM.memory[bus_id])
+            memory = deque(maxlen=2000)
+            for i in range(self.n_agents):
+                # bus_id = r.bus_list[i]
+                if len(self.GM.memory[i]) > 0:
+                    memory.extend(self.GM.memory[i])
                 # teacher_variance = student.actor_output_variance(memory, teachers)
-                student.distill_from_others(memory)
+            student.distill_from_others(memory)
         return student
 
     def learn(self):
@@ -542,14 +552,15 @@ class Engine():
         qloss_set = []
 
         if self.share_scale == 0:
-            for bus_id, bus in self.bus_list.items():
-                if (len(self.GM.memory[bus_id]) + 1) > 16:
-                    # print("learning with memory of bus id:", bus_id)
-                    ploss, qloss = self.agents[bus.id].learn(self.GM.memory[bus_id])
+            for i in range(len(self.agents)):
+            # for bus_id, bus in self.bus_list.items():
+                if (len(self.GM.memory[i])) > 256:
+
+                    ploss, qloss = self.agents[i].learn(self.GM.memory[i])
                     try:
-                        self.qloss[bus.id].append(np.mean(qloss))
+                        self.qloss[i].append(np.mean(qloss))
                     except:
-                        self.qloss[bus.id] = [np.mean(qloss)]
+                        self.qloss[i] = [np.mean(qloss)]
                     ploss_set.append(ploss)
                     qloss_set.append(qloss)
         if self.share_scale == 1:
@@ -571,4 +582,4 @@ class Engine():
         if len(ploss_set) > 0 and len(self.reward_signal) > 0:
             return np.mean(ploss_set), np.mean(qloss_set), True
         else:
-            return _, _, False
+            return 0, 0, False
