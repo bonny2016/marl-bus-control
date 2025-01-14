@@ -244,7 +244,7 @@ class Agent():
         self.actor_optim = torch.optim.Adam(self.actor.parameters(), lr=0.0001)
         self.actor_target.load_state_dict(self.actor.state_dict())
 
-    def lr_decay(self, ratio=0.99):
+    def lr_decay(self, ratio=0.999):
         for param_group in self.actor_optim.param_groups:
             param_group['lr'] *= ratio
         for param_group in self.critic_optim.param_groups:
@@ -255,8 +255,9 @@ class Agent():
         state = torch.tensor(state, dtype=torch.float)
         a = self.actor([state])[0].detach().numpy()
         # Add Gaussian noise for exploration
-        a = a + np.random.normal(0, noise_scale, size=a.shape)
 
+        # a = a + np.random.normal(0, noise_scale, size=a.shape)
+        a = a + np.random.normal(0, self.policy_noise, size=a.shape)
         # Clip the action to be within the valid action range
         a = np.clip(a, 0, 3.0)
         return a

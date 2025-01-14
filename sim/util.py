@@ -271,6 +271,7 @@ def train_result_track(eng, ep, qloss_log, ploss_log, log, name='', seed=0):
         train_log['AOD'] = AOD
         train_log['distilled'] = [log.get('distilled', None)]
         train_log['teachers'] = [log.get('teachers', None)]
+        train_log['policy_noise'] = [log.get('policy_noise', None)]
         # train_log['teacher_mean'] = [log['teacher_mean']]
         # train_log['teacher_variance'] = [log['teacher_variance']]
         #

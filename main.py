@@ -8,17 +8,17 @@ from random import seed
 import torch
 
 parser = argparse.ArgumentParser(description='param')
-parser.add_argument("--seed", type=int, default=2)  # random seed
+parser.add_argument("--seed", type=int, default=20)  # random seed
 parser.add_argument("--model", type=str, default='DDPG_Distill')  # caac  ddpg maddpg
 parser.add_argument("--data", type=str, default='A_0_1')  # used data prefix
 parser.add_argument("--para_flag", type=str, default='A_0_1')  # stored parameter prefix
-parser.add_argument("--episode", type=int, default=1)  # training episode
+parser.add_argument("--episode", type=int, default=200)  # training episode
 parser.add_argument("--overtake", type=int, default=0)  # overtake=0: not allow overtaking
 parser.add_argument("--arr_hold", type=int, default=1)  # arr_hold=1: determine holding once bus arriving bus stop
 parser.add_argument("--train", type=int, default=1)  # train=1: training phase
 parser.add_argument("--restore", type=int, default=0)  # restore=1: restore the model
 parser.add_argument("--share_scale", type=int, default=0)
-parser.add_argument("--n_students", type=int, default=3)  # n_students=4: number of learning agents
+parser.add_argument("--n_students", type=int, default=10)  # n_students=4: number of learning agents
 parser.add_argument("--all", type=int,
                     default=1)  # all=0 for considering only forward/backward buses; all=1 for all buses
 parser.add_argument("--vis", type=int, default=0)  # vis=1 to visualize bus trajectory in test phase
@@ -62,7 +62,7 @@ def train(args):
     stop_list_ = copy.deepcopy(stop_list)
     dispatch_times, bus_list, route_list, simulation_step = U.init_bus_list(bus_routes)
     print('init...')
-    # agents = {}
+    agents = {}
     agents_pool = []
     student_agent = None
     if args.model != '':
@@ -85,12 +85,12 @@ def train(args):
             #     agents[k] = agents_pool[i % args.n_students]
         # share in route
         if args.share_scale == 1:
-            agents = {}
-            for k, v in eng.route_list.items():
-                agent = Agent(state_dim=state_dim, name='', seed=args.seed)
-                agents[k] = agent
+            agents_pool = [Agent(state_dim=state_dim, name='', seed=args.seed)]
+            # for k, v in eng.route_list.items():
+            #     agent = Agent(state_dim=state_dim, name='', seed=args.seed)
+            #     agents[k] = agent
     last_distilled = False
-
+    policy_noise = 0.3
     for ep in range(args.episode):
         stop_list_ = copy.deepcopy(stop_list)
         bus_list_ = copy.deepcopy(bus_list)
@@ -114,9 +114,9 @@ def train(args):
                     eng.GM.temp_memory[bid] = {'s': [], 'a': [], 'fp': [], 'r': []}
 
         if args.restore == 1 and args.control > 1:
-            for k, v in agents.items():
-                print(str(args.para_flag) + str('_') + str(args.share_scale) + str('_') + str(args.model) + str('_'))
-                v.load(str(args.para_flag) + str('_') + str(args.share_scale) + str('_') + str(args.weight) + str(
+            agent = agents_pool[0]
+            print(str(args.para_flag) + str('_') + str(args.share_scale) + str('_') + str(args.model) + str('_'))
+            agent.load(str(args.para_flag) + str('_') + str(args.share_scale) + str('_') + str(args.weight) + str(
                     '_') + str(args.model) + str('_'))
         # run a episode
         Flag = True
@@ -160,9 +160,14 @@ def train(args):
         log['teacher_mean'] = teacher_actor_mean
         log['teacher_variance'] = teacher_actor_variance
         log['teachers'] = len(agents_pool)
+        log['policy_noise'] = policy_noise
+        # log['policy_noise'] =
         avg_reward = U.train_result_track(eng=eng, ep=ep, qloss_log=qloss_log, ploss_log=ploss_log, log=log, name=name,
                                           seed=args.seed)
         last_distilled = False
+        for agent in eng.agents:
+            agent.lr_decay()
+            policy_noise = agent.policy_noise
         if args.share_scale == 1 or len(agents_pool) == 1:
             if ep % 5 == 0 and ep > 10 and args.restore == 0:
                 # store model
@@ -185,12 +190,13 @@ def train(args):
                     str(args.para_flag) + str('_') + str(args.share_scale) + str('_') + str(args.weight) + str(
                         '_') + str(args.model) + str(args.n_students) + 'students' + str('_'))
                 # Merge if similar agents or reaching end of training
-                # if len(agents_pool) > 1 and ep >= 80:
+                # if len( agents_pool) > 1 and ep >= 80:
                 #     agents_pool = [student_agent]
                 #     for i, (k, v) in enumerate(eng.bus_list.items()):
                 #         agents[k] = student_agent
                 for agent in agents_pool:
                     agent.lr_decay()
+                    policy_noise = agent.policy_noise
                     agent.load(
                         str(args.para_flag) + str('_') + str(args.share_scale) + str('_') + str(args.weight) + str(
                             '_') + str(args.model) + str(args.n_students) + 'students' + str('_'))

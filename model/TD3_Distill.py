@@ -247,7 +247,7 @@ class Agent():
         self.actor_optim = torch.optim.Adam(self.actor.parameters(), lr=0.0001)
         self.actor_target.load_state_dict(self.actor.state_dict())
 
-    def lr_decay(self, ratio=0.99):
+    def lr_decay(self, ratio=0.999):
         for param_group in self.actor_optim.param_groups:
             param_group['lr'] *= ratio
         for param_group in self.critic_optim.param_groups:

@@ -382,7 +382,7 @@ class Engine():
         var, mean = self.route_info(bus)
 
         # agent = self.agents[bus.route_id] if self.share_scale else self.agents[bus.id]
-        agent = self.agents[bus.route_id] if self.share_scale else self.agents[self.select_region_id(bus, bus_stop)]
+        agent = self.agents[0] if self.share_scale else self.agents[self.select_region_id(bus, bus_stop)]
 
         # action = np.array(self.agents[bus.id].choose_action(state))
         action = np.array(agent.choose_action(state))
@@ -575,7 +575,7 @@ class Engine():
                     b = np.random.randint(0, len(r.bus_list))
                     bus_id = r.bus_list[b]
 
-                ploss, qloss = self.agents[rid].learn(self.GM.memory[bus_id])
+                ploss, qloss = self.agents[0].learn(self.GM.memory[bus_id])
                 try:
                     self.qloss[bus_id].append(np.mean(qloss))
                 except:
