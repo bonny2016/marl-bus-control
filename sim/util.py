@@ -272,8 +272,11 @@ def train_result_track(eng, ep, qloss_log, ploss_log, log, name='', seed=0):
         train_log['distilled'] = [log.get('distilled', None)]
         train_log['teachers'] = [log.get('teachers', None)]
         train_log['policy_noise'] = [log.get('policy_noise', None)]
-        # train_log['teacher_mean'] = [log['teacher_mean']]
-        # train_log['teacher_variance'] = [log['teacher_variance']]
+        train_log['headway_mean_fleet'] = [log.get('overall_headway_mean', None)]
+        train_log['headway_var_fleet'] = [log.get('overall_headway_var', None)]
+        train_log['headway_cv_fleet'] = [log.get('overall_headway_cv', None)]
+        train_log['teacher_mean'] = [log.get('teacher_mean', None)]
+        train_log['teacher_variance'] = [log.get('teacher_variance', None)]
         #
         # for k, v in headways_mean.items():
         #     train_log['headway_mean' + str(k)] = [np.mean(v)]

@@ -8,7 +8,7 @@ from collections import deque
 
 class Engine():
     def __init__(self, bus_list, busstop_list, route_list, simulation_step, dispatch_times, demand=0, agents=None,
-                 share_scale=0, n_agents=1, is_allow_overtake=0, hold_once_arr=1, control_type=1, seed=1, all=0, weight=0):
+                 share_scale=0, n_agents=1, is_allow_overtake=0, hold_once_arr=1, control_type=1, seed=1, all=0, weight=0, split_by_region=1):
         self.all = all
         self.busstop_list = busstop_list
         self.simulation_step = simulation_step
@@ -37,6 +37,7 @@ class Engine():
         self.dispatch_times = dispatch_times
         self.cvlog = []
         self.total_route_length = 0
+        self.split_by_region = split_by_region
 
         bus_ids = list(self.bus_list.keys())
         # region_ids is used as key when storing bus history data.
@@ -75,6 +76,7 @@ class Engine():
         travel_cost = []
         headways_var = {}
         headways_mean = {}
+        headways_cv = {}
         boards = []
         still_wait = 0
         stop_wise_wait = {}
@@ -131,9 +133,17 @@ class Engine():
                 try:
                     headways_var[bus_stop_id].append(np.var(h))
                     headways_mean[bus_stop_id].append(np.mean(h))
+                    if np.mean(h) > 0:
+                        headways_cv[bus_stop_id].append(np.sqrt(np.var(h))/np.mean(h))
+                    else:
+                        headways_cv[bus_stop_id].append(0)
                 except:
                     headways_var[bus_stop_id] = [np.var(h)]
                     headways_mean[bus_stop_id] = [np.mean(h)]
+                    if np.mean(h) > 0:
+                        headways_cv[bus_stop_id] = [np.sqrt(np.var(h))/np.mean(h)]
+                    else:
+                        headways_cv[bus_stop_id] = [0]
 
         log = {}
         log['wait_cost'] = wait_cost
@@ -141,11 +151,15 @@ class Engine():
         log['hold_cost'] = hold_cost
         log['headways_var'] = headways_var
         log['headways_mean'] = headways_mean
+        log['headways_cv'] = headways_cv
         log['stw'] = stop_wise_wait_order
         log['sth'] = stop_wise_hold_order
         log['bunching'] = self.bunching_times
         log['delay'] = delay
-        print('bunching times:%g headway mean:%g hedaway var:%g EV:%g' % (
+        log['overall_headway_mean'] = np.mean(list(headways_mean.values()))
+        log['overall_headway_var'] = np.mean(list(headways_var.values()))
+        log['overall_headway_cv'] = np.mean(list(headways_cv.values()))
+        print('bunching times:%g headway mean:%g headway var:%g EV:%g' % (
         self.bunching_times, np.mean(list(headways_mean.values())), np.mean(list(headways_var.values())),
         (np.mean(list(headways_var.values())) / (np.mean(list(headways_mean.values())) ** 2))))
         AWT = []
@@ -367,8 +381,11 @@ class Engine():
         if self.share_scale:
             return bus.id
         else:
-            length_per_agent = self.total_route_length / self.n_agents
-            return int(bus_stop.loc/length_per_agent) % (self.n_agents - 1)
+            if self.split_by_region:
+                length_per_agent = self.total_route_length / self.n_agents
+                return int(bus_stop.loc/length_per_agent) % (self.n_agents - 1)
+            else:
+                return int(bus.id % self.n_agents)
 
     def rl_control(self, bus, bus_stop):
         current_interval = self.simulation_step
@@ -531,15 +548,15 @@ class Engine():
 
     def check_variance(self, teachers):
         if self.share_scale == 0:
-            for rid, r in self.route_list.items():
-                memory = deque(maxlen=2000)
-                for i in range(len(r.bus_list)):
-                    bus_id = r.bus_list[i]
-                    if len(self.GM.memory[bus_id]) > 0:
-                        memory.extend(self.GM.memory[bus_id])
-                teacher_mean, teacher_variance = teachers[0].actor_output_variance(memory, teachers)
-        return teacher_mean, teacher_variance
-
+            memory = deque(maxlen=2000)
+            for i in range(self.n_agents):
+                # bus_id = r.bus_list[i]
+                if len(self.GM.memory[i]) > 0:
+                    memory.extend(self.GM.memory[i])
+            teacher_mean, teacher_variance = teachers[0].actor_output_variance(memory, teachers)
+            return teacher_mean, teacher_variance
+        else:
+            return 0, 0
     def distill(self, student, teachers):
         if self.share_scale == 0:
             memory = deque(maxlen=2000)

@@ -8,7 +8,7 @@ from random import seed
 import torch
 
 parser = argparse.ArgumentParser(description='param')
-parser.add_argument("--seed", type=int, default=1)  # random seed
+parser.add_argument("--seed", type=int, default=11)  # random seed
 parser.add_argument("--model", type=str, default='DDPG_Distill')  # caac  ddpg maddpg
 parser.add_argument("--data", type=str, default='A_0_1')  # used data prefix
 parser.add_argument("--para_flag", type=str, default='A_0_1')  # stored parameter prefix
@@ -18,14 +18,14 @@ parser.add_argument("--arr_hold", type=int, default=1)  # arr_hold=1: determine 
 parser.add_argument("--train", type=int, default=1)  # train=1: training phase
 parser.add_argument("--restore", type=int, default=0)  # restore=1: restore the model
 parser.add_argument("--share_scale", type=int, default=0)
-parser.add_argument("--n_students", type=int, default=10)  # n_students=4: number of learning agents
+parser.add_argument("--n_students", type=int, default=4)  # n_students=4: number of learning agents
 parser.add_argument("--all", type=int,
                     default=1)  # all=0 for considering only forward/backward buses; all=1 for all buses
 parser.add_argument("--vis", type=int, default=0)  # vis=1 to visualize bus trajectory in test phase
 parser.add_argument("--weight", type=int, default=2)  # weight for action penalty
 parser.add_argument("--control", type=int,
                     default=2)  # 0 for no control;  1 for FH; 2 for RL (ddpg, maddpg)
-
+parser.add_argument("--split-by-region", type=int, default=0)
 args = parser.parse_args()
 print(args)
 
@@ -35,7 +35,8 @@ if args.model == 'TD3_Distill_ActiveOnly':
     from model.TD3_Distill_ActiveOnly import Agent
 if args.model == 'DDPG_Distill':
     from model.DDPG_Distill import Agent
-
+if args.model == 'DDPG_Distill_200':
+    from model.DDPG_Distill_200 import Agent
 def load_student(state_dim):
 
     student_agent = Agent(state_dim=state_dim, name='', seed=args.seed)
@@ -64,7 +65,6 @@ def train(args):
     print('init...')
     agents = {}
     agents_pool = []
-    student_agent = None
     if args.model != '':
         eng = Sim_Engine.Engine(bus_list=bus_list, busstop_list=stop_list_, control_type=args.control,
                                 dispatch_times=dispatch_times,
@@ -72,7 +72,8 @@ def train(args):
                                 hold_once_arr=args.arr_hold, is_allow_overtake=args.overtake,
                                 share_scale=args.share_scale, n_agents=args.n_students,
                                 all=args.all,
-                                weight=args.weight)
+                                weight=args.weight,
+                                split_by_region=args.split_by_region)
 
         bus_list = eng.bus_list
         bus_stop_list = eng.busstop_list
@@ -150,12 +151,12 @@ def train(args):
         if args.share_scale == 1:
             name += 'shared_model'
         teacher_actor_mean, teacher_actor_variance = 0, 0
-        # if args.share_scale == 1 or len(agents_pool) == 1:
-        #     teacher_actor_mean, teacher_actor_variance = 0, 0
-        # else:
-        #     set_eval_all_agents(agents_pool)
-        #     teacher_actor_mean, teacher_actor_variance = eng.check_variance(agents_pool)
-        #     set_train_all_agents(agents_pool)
+        if args.share_scale == 1 or len(agents_pool) == 1:
+            teacher_actor_mean, teacher_actor_variance = 0, 0
+        else:
+            set_eval_all_agents(agents_pool)
+            teacher_actor_mean, teacher_actor_variance = eng.check_variance(agents_pool)
+            set_train_all_agents(agents_pool)
         log['distilled'] = last_distilled
         log['teacher_mean'] = teacher_actor_mean
         log['teacher_variance'] = teacher_actor_variance
@@ -217,7 +218,7 @@ def evaluate(args):
                                 dispatch_times=dispatch_times,
                                 demand=0, simulation_step=simulation_step, route_list=route_list,
                                 hold_once_arr=args.arr_hold, is_allow_overtake=args.overtake,
-                                share_scale=args.share_scale, n_agents=1, weight=args.weight)
+                                share_scale=1, n_agents=1, weight=args.weight)
 
         bus_list = eng.bus_list
         state_dim = 7
