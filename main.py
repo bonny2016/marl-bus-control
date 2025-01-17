@@ -8,7 +8,7 @@ from random import seed
 import torch
 
 parser = argparse.ArgumentParser(description='param')
-parser.add_argument("--seed", type=int, default=20)  # random seed
+parser.add_argument("--seed", type=int, default=1)  # random seed
 parser.add_argument("--model", type=str, default='DDPG_Distill')  # caac  ddpg maddpg
 parser.add_argument("--data", type=str, default='A_0_1')  # used data prefix
 parser.add_argument("--para_flag", type=str, default='A_0_1')  # stored parameter prefix
@@ -210,7 +210,7 @@ def evaluate(args):
     bus_routes = U.getBusRoute(args.data)
     print('Bus routes prepared, total routes :%g' % (len(bus_routes)))
     dispatch_times, bus_list, route_list, simulation_step = U.init_bus_list(bus_routes)
-    agents = {}
+    agents_pool = []
     if args.model != '':
         stop_list_ = copy.deepcopy(stop_list)
         eng = Sim_Engine.Engine(bus_list=bus_list, busstop_list=stop_list_, control_type=args.control,
@@ -220,20 +220,20 @@ def evaluate(args):
                                 share_scale=args.share_scale, n_agents=1, weight=args.weight)
 
         bus_list = eng.bus_list
+        state_dim = 7
+        # non share
         # non share
         if args.share_scale == 0:
-            for k, v in eng.bus_list.items():
-                state_dim = 7
-                agent = Agent(state_dim=state_dim, name='', seed=args.seed)
-                agents[k] = agent
+            agents_pool = [Agent(state_dim=state_dim, name='', seed=args.seed) for i in range(args.n_students)]
 
         # share in route
         if args.share_scale == 1:
-            agents = {}
-            for k, v in eng.route_list.items():
-                state_dim = 7
-                agent = Agent(state_dim=state_dim, name='', seed=args.seed)
-                agents[k] = agent
+            agents_pool = [Agent(state_dim=state_dim, name='', seed=args.seed)]
+            # agents = {}
+            # for k, v in eng.route_list.items():
+            #     state_dim = 7
+            #     agent = Agent(state_dim=state_dim, name='', seed=args.seed)
+            #     agents[k] = agent
 
     rs = [np.random.randint(10, 20) / 10. for _ in range(100)]
 
@@ -253,12 +253,14 @@ def evaluate(args):
                                 hold_once_arr=args.arr_hold, is_allow_overtake=args.overtake,
                                 share_scale=args.share_scale, weight=args.weight)
 
-        eng.agents = agents
+        eng.agents = agents_pool
         s = str(args.para_flag) + str('_') + str(args.share_scale) + str('_') + str(args.weight) + str('_') + str(
             args.model) + str('_')
         if args.restore == 1 and args.control > 1:
-            for k, v in agents.items():
-                v.load(s)
+            # for k, v in agents.items():
+            #     v.load(s)
+            for agent in eng.agents:
+                agent.load(s)
 
         Flag = True
         while Flag:
