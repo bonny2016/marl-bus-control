@@ -249,7 +249,7 @@ class Agent():
             param_group['lr'] *= ratio
         for param_group in self.critic_optim.param_groups:
             param_group['lr'] *= ratio
-        self.policy_noise *= ratio
+        self.policy_noise *= 0.999
 
     def choose_action(self, state, noise_scale=0.3):
         state = torch.tensor(state, dtype=torch.float)
