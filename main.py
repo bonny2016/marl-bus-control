@@ -116,9 +116,9 @@ def train(args):
 
         if args.restore == 1 and args.control > 1:
             agent = agents_pool[0]
-            print(str(args.para_flag) + str('_') + str(args.share_scale) + str('_') + str(args.model) + str('_'))
+            print(str(args.para_flag) + str('_') + str(args.share_scale) + str('_') + str(args.model) + str('_') + str(args.split_by_region) + str('_'))
             agent.load(str(args.para_flag) + str('_') + str(args.share_scale) + str('_') + str(args.weight) + str(
-                    '_') + str(args.model) + str('_'))
+                    '_') + str(args.model) + str('_') + str(args.split_by_region) + str('_'))
         # run a episode
         Flag = True
         while Flag:
@@ -143,7 +143,7 @@ def train(args):
             name=str(args.para_flag) + str('_') + str(args.share_scale) + str('_') + str(args.model) + str('_'),
             train=args.train)
         abspath = os.path.abspath(os.path.dirname(__file__))
-        name = abspath + f"/log/{args.data}{args.model}_{args.n_students}_students"
+        name = abspath + f"/log/{args.data}{args.model}_{'by-region' if args.split_by_region else 'by-bus'}_{args.n_students}_students"
 
         name += str(int(args.weight))
         if args.all == 1:
@@ -189,7 +189,7 @@ def train(args):
 
                 student_agent.save(
                     str(args.para_flag) + str('_') + str(args.share_scale) + str('_') + str(args.weight) + str(
-                        '_') + str(args.model) + str(args.n_students) + 'students' + str('_'))
+                        '_') + str(args.model) + str(args.n_students) + 'students' + str('_') + str(args.split_by_region) + str('_'))
                 # Merge if similar agents or reaching end of training
                 # if len( agents_pool) > 1 and ep >= 80:
                 #     agents_pool = [student_agent]
@@ -200,7 +200,7 @@ def train(args):
                     policy_noise = agent.policy_noise
                     agent.load(
                         str(args.para_flag) + str('_') + str(args.share_scale) + str('_') + str(args.weight) + str(
-                            '_') + str(args.model) + str(args.n_students) + 'students' + str('_'))
+                            '_') + str(args.model) + str(args.n_students) + 'students' + str('_') + str(args.split_by_region) + str('_'))
                 set_train_all_agents(agents_pool)
         eng.close()
 
@@ -256,7 +256,7 @@ def evaluate(args):
 
         eng.agents = agents_pool
         s = str(args.para_flag) + str('_') + str(args.share_scale) + str('_') + str(args.weight) + str('_') + str(
-            args.model) + str('_')
+            args.model) + str(args.n_students) + 'students' + str('_') + str(args.split_by_region) + str('_')
         if args.restore == 1 and args.control > 1:
             # for k, v in agents.items():
             #     v.load(s)
@@ -276,7 +276,7 @@ def evaluate(args):
             name = abspath + "/logt/" + args.data + 'nc'
 
         if args.control == 2:
-            name = abspath + "/logt/" + args.data + args.model
+            name = abspath + "/logt/" + args.data + args.model + "_by-region" if args.split_by_region else "_by-bus"
 
             name += str(int(args.weight))
             if args.all == 1:
@@ -294,7 +294,7 @@ def evaluate(args):
             if args.control == 1:
                 name = abspath + "/vis/visfc/"
             if args.control == 2:
-                name = abspath + "/vis/vis" + args.model + '/'
+                name = abspath + "/vis/vis" + args.model + '/' + "_by-region" if args.split_by_region else "_by-bus"
             try:
                 os.makedirs(name)
             except:
