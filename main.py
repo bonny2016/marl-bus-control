@@ -25,7 +25,7 @@ parser.add_argument("--vis", type=int, default=0)  # vis=1 to visualize bus traj
 parser.add_argument("--weight", type=int, default=2)  # weight for action penalty
 parser.add_argument("--control", type=int,
                     default=2)  # 0 for no control;  1 for FH; 2 for RL (ddpg, maddpg)
-parser.add_argument("--split-by-region", type=int, default=0)
+parser.add_argument("--split_by_region", type=int, default=0)
 args = parser.parse_args()
 print(args)
 
@@ -76,7 +76,6 @@ def train(args):
                                 split_by_region=args.split_by_region)
 
         bus_list = eng.bus_list
-        bus_stop_list = eng.busstop_list
         state_dim = 7
 
         # non share
@@ -104,9 +103,10 @@ def train(args):
                                 demand=0, simulation_step=simulation_step, route_list=route_list,
                                 hold_once_arr=args.arr_hold, is_allow_overtake=args.overtake,
                                 share_scale=args.share_scale, n_agents=args.n_students,
-                                weight=args.weight)
+                                weight=args.weight, split_by_region=args.split_by_region)
 
-        eng.agents = agents_pool
+        # eng.agents = agents_pool
+        eng.assign_agents(agents_pool)
         if ep > 0:
             if memory_copy != None:
                 eng.GM = memory_copy
