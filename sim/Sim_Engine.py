@@ -14,7 +14,6 @@ class Engine():
         self.simulation_step = simulation_step
         self.pax_list = {}  # passenger on road
         self.arr_pax_list = {}  # passenger who has finished trip
-        self.dispatch_buslist = {}
         self.route_list = route_list
         self.dispatch_buslist = {}
         self.is_allow_overtake = is_allow_overtake
@@ -39,12 +38,10 @@ class Engine():
         self.total_route_length = 0
         self.split_by_region = split_by_region
 
-        bus_ids = list(self.bus_list.keys())
+
         # region_ids is used as key when storing bus history data.
         # if sharing scale == 0: federated training, region_id is used to combine bus histories.
         # else sharing scale == 1: no actual region so key is bus_id
-        region_ids = list(range(self.n_agents))
-        self.GM = Memory(bus_ids, bus_ids) if self.share_scale == 1 else Memory(bus_ids, region_ids)
         self.rs = {}
         for b_id, b in self.bus_list.items():
             self.reward_signal[b_id] = []
@@ -69,7 +66,21 @@ class Engine():
 
         self.action_record = []
         self.reward_record = []
-
+    def assign_agents(self,agents):
+        self.agents = agents
+        n = len(agents)
+        bus_group_ids = list(range(n))
+        bus_ids = list(self.bus_list.keys())
+        self.GM = Memory(bus_ids, bus_ids) if self.share_scale == 1 else Memory(bus_ids, bus_group_ids)
+        dispatch_times = list(self.dispatch_times.values())[0]
+        bins = np.linspace(min(dispatch_times), max(dispatch_times), n + 1)
+        for bus in self.bus_list.values():
+            bin_index = next(
+                (i for i in range(len(bins) - 1) if bins[i] <= bus.dispatch_time < bins[i + 1]),
+                len(bins) - 2 if bus.dispatch_time == bins[-1] else -1
+            )
+            bus.agent_idx = bin_index
+            # print(f"bus id:{bus.id}, dispatch time:{bus.dispatch_time}, idx: {bus.agent_idx}")
     def cal_statistic(self, name, train=1):
         print('total pax:%d' % (len(self.pax_list)))
         wait_cost = []
@@ -380,12 +391,11 @@ class Engine():
     def select_region_id(self, bus, bus_stop):
         if self.share_scale:
             return bus.id
+        elif self.split_by_region:
+            length_per_agent = self.total_route_length / self.n_agents
+            return int(bus_stop.loc/length_per_agent) % (self.n_agents - 1)
         else:
-            if self.split_by_region:
-                length_per_agent = self.total_route_length / self.n_agents
-                return int(bus_stop.loc/length_per_agent) % (self.n_agents - 1)
-            else:
-                return int(bus.id % self.n_agents)
+            return int(bus.agent_idx)
 
     def rl_control(self, bus, bus_stop):
         current_interval = self.simulation_step
